@@ -60,6 +60,9 @@ export function PickupScanner() {
   const [dealErr, setDealErr] = useState("");
   const [pick, setPick] = useState(0);
   const decisionRef = useRef<HTMLDivElement>(null);
+  const inFlight = useRef(false);
+  const dealRef = useRef<Deal | null>(null);
+  dealRef.current = deal;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -71,6 +74,7 @@ export function PickupScanner() {
   }, []);
 
   const saveDeal = (d: Deal | null) => {
+    dealRef.current = d;
     setDeal(d);
     try { if (d) sessionStorage.setItem(DEAL_KEY, JSON.stringify(d)); else sessionStorage.removeItem(DEAL_KEY); } catch {}
   };
@@ -146,7 +150,25 @@ export function PickupScanner() {
     await check(next, c);
   }
 
+  /** Settlement results only ever replace a deal that is still HELD (a late or duplicate reply cannot
+   *  overwrite a confirmed CAPTURED or REVERSED). */
+  const settleTo = (patch: Partial<Deal>) => {
+    const cur = dealRef.current;
+    if (cur && cur.status === "HELD") saveDeal({ ...cur, ...patch });
+  };
+
   async function check(f = fields, c = cls) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await runCheck(f, c);
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  async function runCheck(f: typeof fields, c: ClassifyResult | null) {
+    const deal = dealRef.current;
     const settling = deal?.status === "HELD";
     setBusy(settling ? "Checking recalls and settling the hold with Visa…" : "Checking recalls…");
     const payload = { ...f, cls: c ? { cls: c.cls, p: c.p } : undefined };
@@ -159,7 +181,7 @@ export function PickupScanner() {
     } catch {
       setBusy("");
       // the settle request may have reached the server: mark UNKNOWN so the next scan cannot re-post the token
-      if (settling) saveDeal({ ...deal!, status: "UNKNOWN", reason: "connection lost" });
+      if (settling) settleTo({ status: "UNKNOWN", reason: "connection lost" });
       setDealErr(settling ? "The connection dropped while settling. The hold may or may not have settled: do not retry, check the Visa Business Center." : "The check did not run (connection lost). Nothing was decided.");
       return;
     }
@@ -167,12 +189,13 @@ export function PickupScanner() {
       { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; error?: string };
     if (!r.ok || !j.verdict) {
       setBusy("");
-      if (settling && r.status !== 400 && r.status !== 403) saveDeal({ ...deal!, status: "UNKNOWN", reason: `HTTP ${r.status}` });
+      // 400 (our validation), 403 (bad token) and 503 (no Visa keys) are answered before Visa is called
+      if (settling && ![400, 403, 503].includes(r.status)) settleTo({ status: "UNKNOWN", reason: `HTTP ${r.status}` });
       setDealErr(`${j.error ?? `HTTP ${r.status}`}${settling ? " The hold may or may not have settled: do not retry, check the Visa Business Center." : ""}`);
       return;
     }
     setVerdict(j.verdict);
-    if (settling && j.status) saveDeal({ ...deal!, status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason });
+    if (settling && j.status) settleTo({ status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason });
     setBusy("");
     requestAnimationFrame(() => {
       if (prefersReducedMotion() || !decisionRef.current) return;
@@ -219,7 +242,7 @@ export function PickupScanner() {
                 className="mt-1 w-full rounded-xl border-2 border-ink px-3 py-2.5 font-mono uppercase focus:outline-none focus:ring-4 focus:ring-amber" />
             </label>
           ))}
-          <div className="sm:col-span-3"><SquashButton type="submit" accent="var(--green)">Check what the label says</SquashButton></div>
+          <div className="sm:col-span-3"><SquashButton type="submit" disabled={!!busy} accent="var(--green)">Check what the label says</SquashButton></div>
         </form>
       </div>
 

@@ -24,7 +24,9 @@ export async function POST(request: Request) {
   const dealId = newDealId();
   const auth = await authorize(creds, { dealId, amountUsd, source: { card: SANDBOX_TEST_CARD } });
   if (auth.status !== "AUTHORIZED" || !auth.id) {
-    const unsure = !auth.parsed || auth.httpStatus === 0 || auth.httpStatus >= 500;
+    // AUTHORIZED_PENDING_REVIEW (any AUTHORIZED*, or AUTHORIZED without an id) can mean a hold exists; a readable
+    // DECLINED comes back as 201 too and means no hold, so 2xx alone is not "unsure".
+    const unsure = !auth.parsed || auth.httpStatus === 0 || auth.httpStatus >= 500 || auth.status.startsWith("AUTHORIZED");
     const error = unsure
       ? "Visa did not confirm. A hold MAY have been placed; it will lapse on its own if nobody captures it. Do not retry right away."
       : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
