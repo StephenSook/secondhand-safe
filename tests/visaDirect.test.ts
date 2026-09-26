@@ -227,6 +227,17 @@ describe("pushFunds", () => {
     expect(ok).toHaveBeenCalledTimes(1);
   });
 
+  it("when the release fails, the claim is closed as FAILED and still never re-sent", async () => {
+    const store = memoryStore();
+    store.release = async () => false;
+    const t = vi.fn<Transport>(async () => { throw new TransportError("ECONNREFUSED", false); });
+    expect((await pushFunds({ dealId: "shs-norel", amountUsd: 3 }, { env: fakeEnv(), store, transport: t })).status).toBe("FAILED");
+    expect(store.docs.get("shs-norel")?.state).toBe("FAILED");
+    const ok = approved();
+    expect((await pushFunds({ dealId: "shs-norel", amountUsd: 3 }, { env: fakeEnv(), store, transport: ok })).duplicate).toBe(true);
+    expect(ok).not.toHaveBeenCalled();
+  });
+
   it("asks Visa to answer 202 before our own timeout", async () => {
     const t = approved();
     await pushFunds({ dealId: "shs-hdr", amountUsd: 3 }, { env: fakeEnv(), store: memoryStore(), transport: t });

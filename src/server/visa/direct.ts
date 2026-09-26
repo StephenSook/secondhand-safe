@@ -430,6 +430,12 @@ export interface PushDeps {
 
 const ending = (last4: string) => `card ending ${last4}`;
 
+/** A provably unsent request frees its claim. If the release itself fails, the claim is closed as FAILED so the
+ *  store agrees with what we report (still never a second send: a closed claim is never re-sent). */
+async function releaseOrFail(store: PayoutStore, dealId: string, note: string) {
+  if (!(await store.release(dealId))) await store.finish(dealId, { state: "FAILED", note, finishedAt: new Date().toISOString() });
+}
+
 export async function pushFunds(p: { dealId: string; amountUsd: number; recipientPan?: string }, deps: PushDeps = {}): Promise<PayoutResult> {
   const env = deps.env ?? process.env;
   const base = { dealId: p.dealId, amountUsd: p.amountUsd, recipient: null as string | null };
@@ -470,8 +476,9 @@ export async function pushFunds(p: { dealId: string; amountUsd: number; recipien
   } catch (e) {
     // nothing left this process: a bad MLE certificate is a definite failure, not an uncertain send, and the
     // claim is released so the payout can still be sent once the configuration is fixed
-    await store.release(p.dealId);
-    return { ...base, recipient, status: "FAILED", note: `Not sent: could not encrypt the request (${(e as Error).message})` };
+    const note = `Not sent: could not encrypt the request (${(e as Error).message})`;
+    await releaseOrFail(store, p.dealId, note);
+    return { ...base, recipient, status: "FAILED", note };
   }
   let result: PayoutResult;
   let finish: Partial<PayoutDoc>;
@@ -504,8 +511,8 @@ export async function pushFunds(p: { dealId: string; amountUsd: number; recipien
     const te = e instanceof TransportError ? e : new TransportError((e as Error).message, true);
     if (!te.sent) {
       // the TLS handshake never completed, so Visa never saw it: release the claim for a later attempt
-      await store.release(p.dealId);
       const note = `Not sent: could not connect to Visa Direct (${te.message})`;
+      await releaseOrFail(store, p.dealId, note);
       console.info(`[visa-direct] ${p.dealId}: FAILED before sending`);
       return { ...base, recipient, status: "FAILED", note };
     }
