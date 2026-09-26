@@ -18,10 +18,12 @@ const ok = (v) => Array.isArray(v) && v.length === DIMS && v.every(Number.isFini
 
 const docs = [];
 const recallEmb = JSON.parse(fs.readFileSync("ml/out/emb_js_q8_recalls.json", "utf8"));
+// titles come from the recall index, where CPSC API titles that belong to a different recall are corrected
+const indexTitle = new Map(JSON.parse(fs.readFileSync("data/recalls.json", "utf8")).map((x) => [x.recallNumber, x.title]));
 for (const r of readJsonl("ml/data/cpsc_recall_photos.jsonl")) {
   const e = recallEmb[r.images[0]];
   if (!ok(e)) continue;
-  docs.push({ _id: `recall:${r.recall}`, kind: "recall", recallNumber: r.recall, title: r.title, productType: r.productType ?? null,
+  docs.push({ _id: `recall:${r.recall}`, kind: "recall", recallNumber: r.recall, title: indexTitle.get(r.recall) ?? r.title, productType: r.productType ?? null,
     recallDate: (r.recallDate ?? "").slice(0, 10) || null, notice: r.url, image: r.images[0], embedding: e });
 }
 const nRecall = docs.length;

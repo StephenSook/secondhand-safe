@@ -31,7 +31,7 @@ recalled. (Stephen: edit this into your own words before submitting.)
 2. **Meet and scan.** At pickup, the buyer photographs the label. The barcode is read on the phone, the label
    text is read into model, batch and manufacture date, and our own model looks at the photo for product
    types that are banned outright (inclined sleepers, padded crib bumpers, drop-side cribs).
-3. **Check.** Those values go against 1137 CPSC nursery and children's recalls and 71 NHTSA child car seat
+3. **Check.** Those values go against 1136 CPSC nursery and children's recalls and 71 NHTSA child car seat
    recall campaigns. The rules follow the law: a recall only counts for the batch or date range it names,
    mesh crib liners are allowed, and a car seat always gets NHTSA's used-seat check.
 4. **Capture or reverse.** No match: the hold is captured and the seller is paid. Recalled or banned: the
@@ -57,7 +57,7 @@ recalled. (Stephen: edit this into your own words before submitting.)
   and the request was not changed; it does not mean a parent approved the purchase.
 - **MCP server:** the recall check is also an MCP tool (`recall_check` at `/api/mcp`), so any AI shopping
   agent can check an item before it buys.
-- **Recall index:** 6036 CPSC recalls pulled from the CPSC API, 1137 kept as nursery and children's products,
+- **Recall index:** 6036 CPSC recalls pulled from the CPSC API, 1136 kept as nursery and children's products,
   plus 71 NHTSA child restraint campaigns. Two hand checks of 20 records each found three extraction bugs,
   which we fixed and wrote up in `data/handcheck.md`.
 - **Gemini shopping agent:** Gemini 3.5 Flash turns a spoken or typed request into filters over our scanned
@@ -70,8 +70,8 @@ recalled. (Stephen: edit this into your own words before submitting.)
 - **MongoDB Atlas:** every hold and settlement is recorded; the seller scans a QR on the buyer's phone and
   watches the same deal live, and a deal board shows every deal.
 - **Gemini:** Gemini 3.5 Flash reads the product label photo into brand, model, batch and date with a box for
-  each field. It also read all 1137 recall notices for model numbers, batches and UPCs. A value is kept only
-  if it appears word for word in that recall's text, which raised the recalls we can match on from 449 to 822.
+  each field. It also read all 1136 recall notices for model numbers, batches and UPCs. A value is kept only
+  if it appears word for word in that recall's text, which raised the recalls we can match on from 449 to 820.
 - **Banned-type model:** CLIP ViT-B/32 image embeddings with a logistic-regression head we trained on reviewed
   labels. It runs in the buyer's browser with transformers.js, and we trained it on embeddings from that same
   runtime so the phone sees exactly what training saw. On products it had never seen, macro-F1 is 0.7243
