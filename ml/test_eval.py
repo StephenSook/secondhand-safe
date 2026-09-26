@@ -26,16 +26,10 @@ def test_trained_head_beats_zero_shot(m):
 
 
 def test_held_out_shares_no_product_with_train(m):
-    from train import group_of, HERE as H
     split = json.load(open(os.path.join(OUT, "split.json")))
-    rows = {r["url"]: r for r in csv.DictReader(open(os.path.join(HERE, "labels.csv")))}
-    meta = {}
-    for name in ("listings.jsonl", "cpsc_images.jsonl"):
-        for line in open(os.path.join(H, "data", name)):
-            row = json.loads(line)
-            meta[row["images"][0]] = row
-    g = lambda u: group_of(rows[u], meta)
-    assert not {g(u) for u in split["held_out"]} & {g(u) for u in split["train"]}
+    g = split["group"]
+    assert set(g) == set(split["train"]) | set(split["held_out"])
+    assert not {g[u] for u in split["held_out"]} & {g[u] for u in split["train"]}
     assert not set(split["held_out"]) & set(split["train"])
 
 

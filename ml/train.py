@@ -91,8 +91,15 @@ def main():
     clip = load_emb("clip")
     labels = [r for r in labels if r["url"] in clip]
     train, held, dropped = make_split(labels, clip)
+    meta = {}
+    for name in ("listings.jsonl", "cpsc_images.jsonl"):
+        for line in open(os.path.join(HERE, "data", name)):
+            row = json.loads(line)
+            meta[row["images"][0]] = row
+    # groups are stored with the split so CI can check "no product on both sides" without the raw data
     split = {"rule": __doc__.split("Split rule")[1].split("Writes")[0].strip(), "train": [r["url"] for r in train],
-             "held_out": [r["url"] for r in held], "train_dropped_as_near_duplicates": dropped}
+             "held_out": [r["url"] for r in held], "train_dropped_as_near_duplicates": dropped,
+             "group": {r["url"]: group_of(r, meta) for r in train + held}}
     json.dump(split, open(os.path.join(OUT, "split.json"), "w"), indent=1)
     y = np.array([CLASSES.index(r["label"]) for r in train])
     info = {}
