@@ -165,6 +165,11 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
     expect(v.kind).toBe("NEEDS_CHECK");
     expect(v.recall?.recallNumber).toBe("20113");
   });
+  it("a recall UPC with a check-digit typo still holds the corrected barcode (CPSC 08-579 lists 984343144040; 984343144044 is valid)", () => {
+    const v = checkLabel({ upc: "984343144044" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("08579");
+  });
   it("a scanned code containing an incomplete 10-digit recall UPC keeps the hold (060258358834, recall 14257 lists 60258-35883)", () => {
     const v = checkLabel({ upc: "060258358834" });
     expect(v.kind).toBe("NEEDS_CHECK");

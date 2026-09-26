@@ -41,6 +41,16 @@ describe("pickup route", () => {
     expect(f).not.toHaveBeenCalled();
   });
 
+  it("REGRESSION: the corrected barcode of a recall UPC printed with a wrong check digit (984343144044) never captures", async () => {
+    env();
+    const f = vi.fn(async () => { throw new Error("Visa must not be called"); });
+    vi.stubGlobal("fetch", f);
+    const j = await (await post({ token: token(), upc: "984343144044" })).json();
+    expect(j.verdict.kind).toBe("NEEDS_CHECK");
+    expect(j.status).not.toBe("CAPTURED");
+    expect(f).not.toHaveBeenCalled();
+  });
+
   it("a clean UPC with no deal store is refused before Visa (503, visaCalled false): no claim, no money moves", async () => {
     env();
     const f = vi.fn(async () => { throw new Error("Visa must not be called"); });

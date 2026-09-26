@@ -139,7 +139,7 @@ function RecordFeed({ dealId, onRecord }: { dealId: string; onRecord: (r: DealRe
   return <span data-testid="live-mode">{LIVE_LABEL[mode]}</span>;
 }
 
-type Scan = { id: number; upc: string; source: "scanner" | "keyboard"; strayIgnored?: string; verdict?: Verdict; replayed?: boolean };
+type Scan = { id: number; upc: string; source: "scanner" | "keyboard"; verdict?: Verdict; replayed?: boolean };
 
 export function Checkpoint() {
   const [local, setLocal] = useState<Local | null>(null);
@@ -230,7 +230,7 @@ export function Checkpoint() {
     if (!inFlight.current) applyRecord(r); // during a settlement it is applied right after the answer
   }, [applyRecord]);
 
-  const settle = useCallback(async (upc: string, source: "scanner" | "keyboard", strayIgnored?: string) => {
+  const settle = useCallback(async (upc: string, source: "scanner" | "keyboard") => {
     // the in-flight guard comes first: a code scanned while another is settling changes nothing on screen
     if (inFlight.current) { setErr(`Busy: the previous code is still settling. ${upc} was ignored; nothing was sent.`); return; }
     const cur = localRef.current;
@@ -239,7 +239,7 @@ export function Checkpoint() {
     inFlight.current = true;
     const id = ++reqSeq.current;
     const dealId = cur.dealId;
-    setScan({ id, upc, source, strayIgnored });
+    setScan({ id, upc, source });
     setErr(""); setNote(""); setElsewhere(false);
     setBusy("Checking recalls and settling the hold with Visa…");
     // every answer below belongs to this request and this deal; anything else changed meanwhile is left alone
@@ -299,7 +299,7 @@ export function Checkpoint() {
     setUpcText(wedge.current.digits);
     if (!res) return;
     if (res.kind === "reject") { setErr(`${res.reason} Nothing was sent.`); return; }
-    void settle(res.upc, res.source, res.strayIgnored);
+    void settle(res.upc, res.source);
   }, [settle]);
 
   // a scanner types into whatever has focus: keys typed outside any field still reach the wedge
@@ -408,7 +408,7 @@ export function Checkpoint() {
               A USB barcode scanner works as soon as it is plugged in: it types the code and presses Enter. The UPC is checked against the CPSC recall index and settles the hold: a recall reverses it, no match captures it, anything uncertain keeps it held.
             </p>
             {busy && <p role="status" className="font-bold">{busy}</p>}
-            {scan && <p className="text-sm font-bold" data-testid="kiosk-last-scan">Code sent: <span className="font-mono">{scan.upc}</span> ({scan.source === "scanner" ? "from the scanner" : "typed"}){scan.strayIgnored ? `; stray key ${scan.strayIgnored} ignored` : ""}</p>}
+            {scan && <p className="text-sm font-bold" data-testid="kiosk-last-scan">Code sent: <span className="font-mono">{scan.upc}</span> ({scan.source === "scanner" ? "from the scanner" : "typed"})</p>}
           </form>
         ) : (
           <div className="grid gap-3">

@@ -30,7 +30,7 @@ const byUpc = new Map<string, Entry[]>();
  *  check digit, or both), or 12 to 14 digits with a wrong check digit (a truncated or mistyped code, such as CPSC
  *  20-113's 693983769445 for the real 6939837694455). A scanned code that CONTAINS one never moves money either
  *  way: it keeps the hold (NEEDS_CHECK) for a person to read the label. */
-const shortUpcs: { core: string; entry: Entry }[] = [];
+const shortUpcs: { core: string; body?: string; entry: Entry }[] = [];
 /** One key per product whatever the zero padding: a UPC-A, its EAN-13 ("0" + UPC-A) and its GTIN-14 are the same
  *  GTIN, and a scanner may send any of them. Leading zeros never change a GTIN check digit. */
 const upcKey = (digits: string) => digits.replace(/^0+/, "");
@@ -43,7 +43,8 @@ for (const r of RECALLS) {
     } else if (id.kind === "upc") {
       const k = id.value.replace(/\D/g, "");
       if (k.length < 10) continue;
-      if (k.length <= 11 || !gtinValid(k)) shortUpcs.push({ core: upcKey(k), entry: { recall: r, value: id.value } });
+      // a full-length value with a wrong check digit may be a check-digit typo: its body is a candidate too
+      if (k.length <= 11 || !gtinValid(k)) shortUpcs.push({ core: upcKey(k), body: k.length >= 12 ? upcKey(k.slice(0, -1)) : undefined, entry: { recall: r, value: id.value } });
       else byUpc.set(upcKey(k), [...(byUpc.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
     }
   }
@@ -126,7 +127,7 @@ function recallLookup(input: LabelInput): Verdict | undefined {
       const hit = byUpc.get(upcKey(code));
       if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
     }
-    const short = shortUpcs.filter((s) => codes.some((c) => c.includes(s.core))).map((s) => s.entry);
+    const short = shortUpcs.filter((s) => codes.some((c) => c.includes(s.core) || (!!s.body && upcKey(c.slice(0, -1)) === s.body))).map((s) => s.entry);
     if (short.length) {
       const e = pick(short);
       return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "upc", value: input.upc, recallValue: e.value }, asOf: INDEX_AS_OF,

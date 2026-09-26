@@ -44,29 +44,36 @@ describe("keyboard-wedge barcode input", () => {
     expect(type(new WedgeBuffer(), "1234567890123456", 5).result).toMatchObject({ kind: "reject", reason: expect.stringMatching(/Not a valid barcode/) });
   });
 
-  it("REGRESSION: a stray 7 pressed 30 ms before a recalled scan never becomes 7669028116546", () => {
+  it("REGRESSION: a stray 7 pressed 30 ms before a recalled scan is rejected, never 7669028116546 and never a guessed part", () => {
     const w = new WedgeBuffer();
     w.key("7", 0);
     const { result } = type(w, RECALLED, 8, 30);
-    expect(result).toEqual({ kind: "scan", upc: RECALLED, source: "scanner", strayIgnored: "7" });
-    expect(JSON.stringify(result)).not.toContain(`7${RECALLED}`);
+    expect(result).toMatchObject({ kind: "reject", reason: expect.stringMatching(/Scan did not read cleanly, scan again/) });
   });
 
-  it("a burst that fails its check digit, with no valid code inside it, is rejected (nothing sent)", () => {
+  it("REGRESSION: a pause inside a recalled scan never submits its valid suffix (698904871507, recall 25115; 04871507 is a valid EAN-8)", () => {
+    expect(gtinValid("04871507")).toBe(true);
+    const w = new WedgeBuffer();
+    let t = 0;
+    for (const [i, ch] of [..."698904871507"].entries()) { w.key(ch, t); t += i === 3 ? 60 : 8; }
+    const r = w.key("Enter", t);
+    // the whole buffer is the recalled code, so it is submitted whole; a part of it is never sent
+    expect(r).toEqual({ kind: "scan", upc: "698904871507", source: "keyboard" });
+    expect(JSON.stringify(r)).not.toMatch(/"04871507"/);
+  });
+
+  it("a split scan whose whole buffer is not a barcode is rejected (a digit typed, then a full scan)", () => {
+    const w = new WedgeBuffer();
+    w.key("7", 0);
+    expect(type(w, "04871507", 8, 900).result).toMatchObject({ kind: "reject" });
+    expect(type(w, "04871507", 8).result).toEqual({ kind: "scan", upc: "04871507", source: "scanner" }); // the next clean scan works
+  });
+
+  it("a burst that fails its check digit is rejected (nothing sent)", () => {
     expect(type(new WedgeBuffer(), "669028116547", 8).result).toMatchObject({ kind: "reject", reason: expect.stringMatching(/fails its check digit/) });
   });
 
-  it("a burst that reads as two valid barcodes is rejected, never guessed", () => {
-    // one stray digit in front of a UPC-A can never make a valid EAN-13 (it adds itself to the checksum), but two
-    // can make a valid GTIN-14: 17 + 012345678905 is valid, and so is 012345678905 on its own
-    expect(gtinValid(`17${CLEAN}`)).toBe(true);
-    const w = new WedgeBuffer();
-    w.key("1", 0);
-    w.key("7", 10);
-    expect(type(w, CLEAN, 8, 20).result).toMatchObject({ kind: "reject", reason: expect.stringMatching(/more than one valid barcode/) });
-  });
-
-  it("a leading 0 is the EAN-13 form of a UPC-A, not a stray key", () => {
+  it("a leading 0 is part of the code: the EAN-13 form of a UPC-A is submitted whole", () => {
     expect(type(new WedgeBuffer(), `0${RECALLED}`, 8).result).toEqual({ kind: "scan", upc: `0${RECALLED}`, source: "scanner" });
   });
 
@@ -83,19 +90,6 @@ describe("keyboard-wedge barcode input", () => {
     type(w, "12345", 5);
     expect(w.digits).toBe("");
     expect(type(w, CLEAN, 5).result).toMatchObject({ upc: CLEAN });
-  });
-
-  it("digits typed slowly long before a scanner burst are not part of it", () => {
-    const w = new WedgeBuffer();
-    w.key("7", 0);
-    expect(type(w, RECALLED, 8, 900).result).toEqual({ kind: "scan", upc: RECALLED, source: "scanner" });
-  });
-
-  it("digits older than the idle window are forgotten", () => {
-    const w = new WedgeBuffer({ idleResetMs: 5000 });
-    w.key("9", 0);
-    w.key("9", 100);
-    expect(type(w, CLEAN, 300, 20_000).result).toEqual({ kind: "scan", upc: CLEAN, source: "keyboard" });
   });
 
   it("Backspace removes the last digit", () => {
