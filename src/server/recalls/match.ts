@@ -26,9 +26,10 @@ export const isJunkId = (v: string) => JUNK.test(v.trim());
 type Entry = { recall: RecallDoc; value: string };
 const byModel = new Map<string, Entry[]>();
 const byUpc = new Map<string, Entry[]>();
-/** Recall UPCs printed incomplete (10 or 11 digits: no number-system digit, no check digit, or both). The notice
- *  does not say which digits are missing, so a scanned code that CONTAINS one never moves money either way: it
- *  keeps the hold (NEEDS_CHECK) for a person to read the label. */
+/** Recall UPCs that are not a complete, valid barcode as printed: 10 or 11 digits (no number-system digit, no
+ *  check digit, or both), or 12 to 14 digits with a wrong check digit (a truncated or mistyped code, such as CPSC
+ *  20-113's 693983769445 for the real 6939837694455). A scanned code that CONTAINS one never moves money either
+ *  way: it keeps the hold (NEEDS_CHECK) for a person to read the label. */
 const shortUpcs: { core: string; entry: Entry }[] = [];
 /** One key per product whatever the zero padding: a UPC-A, its EAN-13 ("0" + UPC-A) and its GTIN-14 are the same
  *  GTIN, and a scanner may send any of them. Leading zeros never change a GTIN check digit. */
@@ -42,7 +43,7 @@ for (const r of RECALLS) {
     } else if (id.kind === "upc") {
       const k = id.value.replace(/\D/g, "");
       if (k.length < 10) continue;
-      if (k.length <= 11) shortUpcs.push({ core: upcKey(k), entry: { recall: r, value: id.value } });
+      if (k.length <= 11 || !gtinValid(k)) shortUpcs.push({ core: upcKey(k), entry: { recall: r, value: id.value } });
       else byUpc.set(upcKey(k), [...(byUpc.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
     }
   }
@@ -129,7 +130,7 @@ function recallLookup(input: LabelInput): Verdict | undefined {
     if (short.length) {
       const e = pick(short);
       return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "upc", value: input.upc, recallValue: e.value }, asOf: INDEX_AS_OF,
-        reason: `UPC ${d} may be the one ${e.recall.source} recall ${e.recall.recallNumber} lists as ${e.value}, which is printed with digits missing, so it cannot be matched for certain. Read the model number on the label before any money moves.` };
+        reason: `UPC ${d} may be the one ${e.recall.source} recall ${e.recall.recallNumber} lists as ${e.value}, which is printed incomplete or with a wrong check digit, so it cannot be matched for certain. Read the model number on the label before any money moves.` };
     }
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {

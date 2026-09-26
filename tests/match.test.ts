@@ -139,7 +139,7 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
       const v = checkLabel({ upc });
       expect(v.kind, upc).toBe("NEEDS_CHECK");
       expect(v.recall?.recallNumber).toBe("11220");
-      expect(v.reason).toMatch(/printed with digits missing/);
+      expect(v.reason).toMatch(/printed incomplete/);
     }
     expect(checkLabel({ upc: "066264914743" }).kind).toBe("NEEDS_CHECK"); // CPSC 12017 lists 06626491474
   });
@@ -158,6 +158,12 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
     const v = checkLabel({ upc: "10669028116543" });
     expect(v.kind).toBe("RECALL_MATCH");
     expect(v.recall?.recallNumber).toBe("26530");
+  });
+  it("REGRESSION: a recall that lists a truncated barcode still holds the real one (CPSC 20-113 lists 693983769445; the pillow's barcode is 6939837694455)", () => {
+    const v = checkLabel({ upc: "6939837694455" });
+    expect(v.kind).not.toBe("NO_MATCH");
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("20113");
   });
   it("a scanned code containing an incomplete 10-digit recall UPC keeps the hold (060258358834, recall 14257 lists 60258-35883)", () => {
     const v = checkLabel({ upc: "060258358834" });
