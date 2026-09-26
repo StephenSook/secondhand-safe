@@ -13,6 +13,8 @@ export interface VisaResult {
   id?: string;
   httpStatus: number;
   reason?: string;
+  /** true only when Visa's JSON body was read and carried a status */
+  parsed: boolean;
   raw: unknown;
 }
 
@@ -50,12 +52,13 @@ async function post(creds: VisaCreds, path: string, payload: object, op: keyof t
   try {
     res = await fetchImpl(`https://${creds.host}${path}`, { method: "POST", headers: signedHeaders(creds, "POST", path, body), body, signal: AbortSignal.timeout(20_000) });
   } catch (e) {
-    return { ok: false, status: "NETWORK_ERROR", httpStatus: 0, reason: (e as Error).name, raw: null };
+    return { ok: false, status: "NETWORK_ERROR", httpStatus: 0, reason: (e as Error).name, parsed: false, raw: null };
   }
   const raw = (await res.json().catch(() => ({}))) as { id?: string; status?: string; errorInformation?: { reason?: string; message?: string }; reason?: string; message?: string };
   const status = raw.status ?? "ERROR";
   return {
     ok: res.ok && status === SUCCESS[op],
+    parsed: typeof raw.status === "string",
     status,
     id: raw.id,
     httpStatus: res.status,

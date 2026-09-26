@@ -18,7 +18,9 @@ export function decide(v: Verdict): "capture" | "reverse" | "hold" {
   return "hold";
 }
 
-const unconfirmed = (r: VisaResult): DealStatus => (r.status === "NETWORK_ERROR" || r.httpStatus >= 500 ? "UNKNOWN" : "REFUSED");
+/** REFUSED only when Visa itself answered 4xx with a status (it did not apply the action). A 2xx outside the
+ *  allowlist, a body that could not be read, a 5xx or no answer is UNKNOWN: money may have moved. */
+const unconfirmed = (r: VisaResult): DealStatus => (r.parsed && r.httpStatus >= 400 && r.httpStatus < 500 ? "REFUSED" : "UNKNOWN");
 
 export async function settle(
   creds: VisaCreds,

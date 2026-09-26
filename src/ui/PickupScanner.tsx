@@ -150,14 +150,24 @@ export function PickupScanner() {
     const settling = deal?.status === "HELD";
     setBusy(settling ? "Checking recalls and settling the hold with Visa…" : "Checking recalls…");
     const payload = { ...f, cls: c ? { cls: c.cls, p: c.p } : undefined };
-    const r = await fetch(settling ? "/api/pickup" : "/api/check", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify(settling ? { ...payload, token: deal!.token } : payload),
-    });
+    let r: Response;
+    try {
+      r = await fetch(settling ? "/api/pickup" : "/api/check", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(settling ? { ...payload, token: deal!.token } : payload),
+      });
+    } catch {
+      setBusy("");
+      // the settle request may have reached the server: mark UNKNOWN so the next scan cannot re-post the token
+      if (settling) saveDeal({ ...deal!, status: "UNKNOWN", reason: "connection lost" });
+      setDealErr(settling ? "The connection dropped while settling. The hold may or may not have settled: do not retry, check the Visa Business Center." : "The check did not run (connection lost). Nothing was decided.");
+      return;
+    }
     const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
       { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; error?: string };
     if (!r.ok || !j.verdict) {
       setBusy("");
+      if (settling && r.status !== 400 && r.status !== 403) saveDeal({ ...deal!, status: "UNKNOWN", reason: `HTTP ${r.status}` });
       setDealErr(`${j.error ?? `HTTP ${r.status}`}${settling ? " The hold may or may not have settled: do not retry, check the Visa Business Center." : ""}`);
       return;
     }
@@ -244,10 +254,10 @@ export function PickupScanner() {
               <p className="mt-1 font-semibold opacity-80">{deal.listing}</p>
               <dl className="mt-3 text-xs font-mono grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 opacity-90">
                 <dt>authorization</dt><dd className="break-all">{deal.authId}</dd>
-                {deal.settlementId && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
+                {deal.settlementId && (deal.status === "CAPTURED" || deal.status === "REVERSED") && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
                 <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
               </dl>
-              {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}): this hold was already settled or is not open. Nothing more moved.</p>}
+              {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}){deal.reason === "MISSING_AUTH" ? ": this hold was already settled or is not open" : ""}. Visa did not apply it.</p>}
               {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
               {deal.status === "HELD"
                 ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>

@@ -24,7 +24,11 @@ export async function POST(request: Request) {
   const dealId = newDealId();
   const auth = await authorize(creds, { dealId, amountUsd, source: { card: SANDBOX_TEST_CARD } });
   if (auth.status !== "AUTHORIZED" || !auth.id) {
-    return Response.json({ error: `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim(), visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
+    const unsure = !auth.parsed || auth.httpStatus === 0 || auth.httpStatus >= 500;
+    const error = unsure
+      ? "Visa did not confirm. A hold MAY have been placed; it will lapse on its own if nobody captures it. Do not retry right away."
+      : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
+    return Response.json({ error, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
   }
   return Response.json({
     dealId, listing, amountUsd, status: "HELD",

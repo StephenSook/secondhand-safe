@@ -10,22 +10,31 @@ export interface DealClaims { dealId: string; authId: string; amountUsd: number;
 const TTL_MS = 12 * 60 * 60 * 1000;
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 
-function mac(secret: string, body: string) {
-  const key = process.env.DEAL_TOKEN_SECRET?.trim() || `shs-deal:${secret}`;
+/** Signing key first; the derived key is also accepted so setting DEAL_TOKEN_SECRET never orphans open holds. */
+function keys(secret: string): string[] {
+  const derived = `shs-deal:${secret}`;
+  const explicit = process.env.DEAL_TOKEN_SECRET?.trim();
+  return explicit ? [explicit, derived] : [derived];
+}
+
+function mac(key: string, body: string) {
   return createHmac("sha256", key).update(body).digest();
 }
 
 export function issueDealToken(secret: string, c: Omit<DealClaims, "iat">, now = Date.now()): string {
   const body = b64u(JSON.stringify({ ...c, amountUsd: Number(c.amountUsd.toFixed(2)), iat: now }));
-  return `${body}.${b64u(mac(secret, body))}`;
+  return `${body}.${b64u(mac(keys(secret)[0], body))}`;
 }
 
 export function verifyDealToken(secret: string, token: string, now = Date.now()): DealClaims | null {
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
-  const expected = mac(secret, body);
   const got = Buffer.from(sig, "base64url");
-  if (got.length !== expected.length || !timingSafeEqual(got, expected)) return null;
+  const valid = keys(secret).some((k) => {
+    const expected = mac(k, body);
+    return got.length === expected.length && timingSafeEqual(got, expected);
+  });
+  if (!valid) return null;
   try {
     const c = JSON.parse(Buffer.from(body, "base64url").toString()) as DealClaims;
     if (typeof c.dealId !== "string" || typeof c.authId !== "string" || typeof c.amountUsd !== "number") return null;

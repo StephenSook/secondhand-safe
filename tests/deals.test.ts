@@ -15,6 +15,17 @@ describe("deal token", () => {
     const forged = Buffer.from(JSON.stringify({ ...c, amountUsd: 1 })).toString("base64url") + "." + sig;
     expect(verifyDealToken(S, forged)).toBeNull();
   });
+  it("setting DEAL_TOKEN_SECRET keeps tokens issued before it valid", () => {
+    const before = issueDealToken(S, { dealId: "d2", authId: "a2", amountUsd: 9 });
+    process.env.DEAL_TOKEN_SECRET = "new-explicit-key";
+    try {
+      expect(verifyDealToken(S, before)).toMatchObject({ dealId: "d2" });
+      const after = issueDealToken(S, { dealId: "d3", authId: "a3", amountUsd: 9 });
+      expect(verifyDealToken(S, after)).toMatchObject({ dealId: "d3" });
+    } finally {
+      delete process.env.DEAL_TOKEN_SECRET;
+    }
+  });
   it("rejects another key and expiry", () => {
     expect(verifyDealToken("other", t)).toBeNull();
     expect(verifyDealToken(S, t, Date.now() + 13 * 3600_000)).toBeNull();
@@ -46,9 +57,14 @@ describe("money rule", () => {
     const r = await settle(creds, { dealId: "d", authId: "a", amountUsd: 5 }, checkLabel({ model: "ZZT9Q41X" }), f);
     expect(r.status).toBe("UNKNOWN");
   });
-  it("a 2xx without the expected status is not a capture (allowlist)", async () => {
+  it("a 2xx without the expected status is UNKNOWN, never a capture and never 'nothing moved'", async () => {
     const f = (async () => new Response("<html>ok</html>", { status: 200 })) as unknown as typeof fetch;
     const r = await settle(creds, { dealId: "d", authId: "a", amountUsd: 5 }, checkLabel({ model: "ZZT9Q41X" }), f);
-    expect(r.status).toBe("REFUSED");
+    expect(r.status).toBe("UNKNOWN");
+  });
+  it("a 4xx without a readable Visa status is UNKNOWN", async () => {
+    const f = (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch;
+    const r = await settle(creds, { dealId: "d", authId: "a", amountUsd: 5 }, checkLabel({ model: "ZZT9Q41X" }), f);
+    expect(r.status).toBe("UNKNOWN");
   });
 });
