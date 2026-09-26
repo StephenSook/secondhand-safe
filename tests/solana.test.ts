@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createPublicKey, verify, randomBytes, generateKeyPairSync } from "node:crypto";
-import { b58encode, b58decode, buildMemoTx, keypairFromB58, passportMemo, recordHash, MEMO_PROGRAM } from "@/server/solana/memo";
+import { b58encode, b58decode, buildMemoTx, keypairFromB58, passportMemo, recordHash, MEMO_PROGRAM, judgePassport, passportSigner, readPassport } from "@/server/solana/memo";
 
 function freshSecret() {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -32,5 +32,28 @@ describe("Solana memo passport (hand-built transaction)", () => {
     const m = passportMemo("shs-abc", recordHash(rec));
     expect(m).not.toContain("ZZT9Q41X");
     expect(m).toMatch(/sha256:[0-9a-f]{64}$/);
+  });
+
+  it("a passport verifies only with our signer, a successful transaction and the matching record", () => {
+    const rec = JSON.stringify({ dealId: "shs-1", verdict: "NO_MATCH" });
+    const memo = passportMemo("shs-1", recordHash(rec));
+    expect(judgePassport({ memo, ok: true, signer: "OURS" }, "OURS", rec).verified).toBe(true);
+    // anyone can post the same memo from their own wallet
+    expect(judgePassport({ memo, ok: true, signer: "ATTACKER" }, "OURS", rec)).toMatchObject({ verified: false, fromUs: false, hashOk: true });
+    expect(judgePassport({ memo, ok: false, signer: "OURS" }, "OURS", rec).verified).toBe(false);
+    expect(judgePassport({ memo, ok: true, signer: "OURS" }, "OURS", rec.replace("NO_MATCH", "RECALL_MATCH")).verified).toBe(false);
+    expect(judgePassport({ memo, ok: true, signer: "OURS" }, null, rec).verified).toBe(false);
+  });
+  it("the expected signer comes from our keypair, or the public SOLANA_PUBKEY", () => {
+    const secret = freshSecret();
+    expect(passportSigner({ SOLANA_SECRET_KEY_B58: secret })).toBe(b58encode(keypairFromB58(secret).pub));
+    expect(passportSigner({ SOLANA_PUBKEY: "PUB" })).toBe("PUB");
+    expect(passportSigner({})).toBeNull();
+  });
+  it("an RPC failure throws; only a real 'no such transaction' is null", async () => {
+    const none = (async () => Response.json({ jsonrpc: "2.0", id: 1, result: null })) as unknown as typeof fetch;
+    expect(await readPassport("x", none)).toBeNull();
+    const busy = (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch;
+    await expect(readPassport("x", busy)).rejects.toThrow();
   });
 });

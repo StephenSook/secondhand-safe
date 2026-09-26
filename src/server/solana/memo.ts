@@ -59,8 +59,8 @@ export function buildMemoTx(kp: ReturnType<typeof keypairFromB58>, blockhashB58:
   return { tx: Buffer.concat([compactU16(1), sig, message]).toString("base64"), signature: b58encode(sig) };
 }
 
-async function rpc<T>(method: string, params: unknown[], f: typeof fetch, url = DEVNET_RPC): Promise<T> {
-  const r = await f(url, { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(10_000),
+async function rpc<T>(method: string, params: unknown[], f: typeof fetch, timeoutMs = 10_000, url = DEVNET_RPC): Promise<T> {
+  const r = await f(url, { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
   const j = (await r.json().catch(() => ({}))) as { result?: T; error?: { message?: string } };
   if (!r.ok || j.error || j.result === undefined) throw new Error(j.error?.message ?? `Solana RPC HTTP ${r.status}`);
@@ -73,9 +73,17 @@ export const passportMemo = (dealId: string, hashHex: string) => `lullabuy passp
 /** Sends the memo; returns the transaction signature. Throws with Solana's reason (for example an unfunded payer). */
 export async function anchor(secretB58: string, memo: string, f: typeof fetch = fetch): Promise<string> {
   const kp = keypairFromB58(secretB58);
-  const { value } = await rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [{ commitment: "confirmed" }], f);
+  // short timeouts: this runs after the Visa capture, and must never make a finished sale look failed
+  const { value } = await rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [{ commitment: "confirmed" }], f, 3_000);
   const { tx } = buildMemoTx(kp, value.blockhash, memo);
-  return rpc<string>("sendTransaction", [tx, { encoding: "base64", preflightCommitment: "confirmed" }], f);
+  return rpc<string>("sendTransaction", [tx, { encoding: "base64", preflightCommitment: "confirmed" }], f, 4_000);
+}
+
+/** The public key that signs our passports: from the keypair when this server holds it, else SOLANA_PUBKEY. */
+export function passportSigner(env: Record<string, string | undefined> = process.env): string | null {
+  const sec = env.SOLANA_SECRET_KEY_B58?.trim();
+  if (sec) { try { return b58encode(keypairFromB58(sec).pub); } catch { /* fall through */ } }
+  return env.SOLANA_PUBKEY?.trim() || null;
 }
 
 /** Dry run against devnet with signature verification on: proves the transaction is well formed and signed. */
@@ -86,12 +94,22 @@ export async function simulate(secretB58: string, memo: string, f: typeof fetch 
   return rpc<{ value: { err: unknown; logs: string[] | null } }>("simulateTransaction", [tx, { encoding: "base64", sigVerify: true, commitment: "confirmed" }], f);
 }
 
-/** Reads a passport transaction back: the memo text, slot and time. */
+/** Reads a passport transaction back: memo text, fee payer (the signer), success, slot and time.
+ *  Returns null only when devnet answers that the transaction does not exist; an RPC failure throws. */
 export async function readPassport(signature: string, f: typeof fetch = fetch) {
-  const t = await rpc<{ slot: number; blockTime: number | null; meta: { logMessages: string[] | null; err: unknown } } | null>(
+  const t = await rpc<{ slot: number; blockTime: number | null; meta: { logMessages: string[] | null; err: unknown };
+    transaction: { message: { accountKeys: string[] } } } | null>(
     "getTransaction", [signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }], f);
   if (!t) return null;
   const line = (t.meta.logMessages ?? []).find((l) => l.includes("Memo (len"));
   const memo = line?.match(/: "(.*)"$/)?.[1] ?? null;
-  return { slot: t.slot, blockTime: t.blockTime, memo, ok: t.meta.err === null };
+  return { slot: t.slot, blockTime: t.blockTime, memo, ok: t.meta.err === null, signer: t.transaction.message.accountKeys[0] ?? null };
+}
+
+/** The passport verdict a stranger sees: all three must hold, or it is not ours or not proven. */
+export function judgePassport(tx: { memo: string | null; ok: boolean; signer: string | null }, expectedSigner: string | null, recordJson: string | null) {
+  const onChain = tx.memo?.match(/record=sha256:([0-9a-f]{64})/)?.[1] ?? null;
+  const fromUs = !!expectedSigner && tx.signer === expectedSigner;
+  const hashOk = !!recordJson && !!onChain && recordHash(recordJson) === onChain;
+  return { fromUs, succeeded: tx.ok, hashOk, verified: fromUs && tx.ok && hashOk };
 }
