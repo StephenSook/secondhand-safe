@@ -17,3 +17,6 @@ scripts/*
 test-results
 playwright-report
 *.log
+
+# The Expo app deploys through Expo, not Vercel
+mobile
