@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { flagPostSaleRecall, watchedSales } from "@/server/deals/store";
 import { recheckSales } from "@/server/watch/recheck";
 import { notify } from "@/server/watch/push";
+import { recallCall } from "@/server/call/trigger";
 
 export const maxDuration = 60;
 const NO_STORE = { "cache-control": "no-store" };
@@ -29,7 +30,9 @@ export async function GET(request: Request) {
       .catch(() => ({ sent: 0, failed: 1, subs: 1 }));
     const delivered = push.subs === 0 || push.sent > 0;
     const newly = delivered ? await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url }, push.sent) : false;
-    out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered });
+    // the recall call (opt-in): once per sale per recall, capped; its result never changes the flag above
+    const call = newly ? (await recallCall(h.dealId, { kind: "postsale", recallNumber: h.recallNumber })).state : "not-flagged";
+    out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered, call });
   }
   return Response.json({ checked: sales.length, hits: out }, { headers: NO_STORE });
 }

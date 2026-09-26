@@ -7,6 +7,7 @@ import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
 import { recordSettlement } from "@/server/deals/store";
 import { waitUntil } from "@vercel/functions";
+import { callAfterReversal } from "@/server/call/pickup";
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 
@@ -53,6 +54,8 @@ export async function POST(request: Request) {
     verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
     passportPath: passport && "path" in passport ? passport.path : null,
     label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } }));
+  // the recall call (opt-in): background only, after the settlement is recorded; it never delays this answer
+  if (out.status === "REVERSED") waitUntil(callAfterReversal(deal.dealId, verdict).catch(() => {}));
   return Response.json({
     dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
     visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },
