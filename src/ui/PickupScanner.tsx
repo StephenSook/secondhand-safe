@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CardFields, type Tokenize } from "./CardFields";
 import type { Verdict } from "@/core/verdict";
 import { VERDICT_LABEL, CAPTURABLE } from "@/core/verdict";
 import type { ClipHead, ClassifyResult } from "@/core/clipHead";
@@ -59,6 +60,7 @@ export function PickupScanner() {
   const [deal, setDeal] = useState<Deal | null>(null);
   const [dealErr, setDealErr] = useState("");
   const [pick, setPick] = useState(0);
+  const [tokenize, setTokenize] = useState<Tokenize | null>(null);
   const decisionRef = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const dealRef = useRef<Deal | null>(null);
@@ -107,10 +109,12 @@ export function PickupScanner() {
 
   async function startDeal() {
     setDealErr("");
-    setBusy("Asking Visa to authorize and hold…");
+    setBusy(tokenize ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
     try {
+      const transientTokenJwt = tokenize ? await tokenize() : undefined;
+      setBusy("Asking Visa to authorize and hold…");
       const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd }) });
+        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd, transientTokenJwt }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at });
@@ -295,6 +299,7 @@ export function PickupScanner() {
                   </label>
                 ))}
               </div>
+              <CardFields onReady={(t) => setTokenize(() => t)} />
               <div className="mt-4 flex flex-wrap gap-3">
                 <SquashButton onClick={startDeal} disabled={!!busy} accent="var(--amber)">Agree and hold the payment</SquashButton>
                 <SquashButton onClick={() => agentBuy(false)} disabled={!!busy} bg="var(--visa)" accent="var(--aqua)">Let our agent buy it</SquashButton>
@@ -302,7 +307,7 @@ export function PickupScanner() {
               <button type="button" onClick={() => agentBuy(true)} disabled={!!busy} className="mt-3 text-sm font-bold underline decoration-2 underline-offset-4">
                 Try a tampered agent request (amount edited after signing)
               </button>
-              <p className="mt-3 text-xs font-semibold text-ink/60">Authorizes Visa&apos;s sandbox test card with capture off. Card entry by Microform is next.</p>
+              <p className="mt-3 text-xs font-semibold text-ink/60">Authorizes with capture off. The agent path uses Visa&apos;s sandbox test card.</p>
             </>
           )}
           {visaLive && deal && (
