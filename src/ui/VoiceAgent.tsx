@@ -22,16 +22,20 @@ const LOOK = {
 } as const;
 
 export function VoiceAgent({ shop }: { shop: RefObject<ShopHandle | null> }) {
+  // A start the SDK never settles keeps the provider's internal start lock, so a retry would be dropped silently.
+  // On a hung start the whole provider is remounted (new key): the lock goes with the old instance.
+  const [gen, setGen] = useState(0);
+  const [carry, setCarry] = useState("");
   return (
-    <ConversationProvider>
-      <VoicePanel shop={shop} />
+    <ConversationProvider key={gen}>
+      <VoicePanel shop={shop} initialProblem={carry} onHung={(msg) => { setCarry(msg); setGen((g) => g + 1); }} />
     </ConversationProvider>
   );
 }
 
-function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [problem, setProblem] = useState("");
+function VoicePanel({ shop, initialProblem, onHung }: { shop: RefObject<ShopHandle | null>; initialProblem: string; onHung: (msg: string) => void }) {
+  const [phase, setPhase] = useState<Phase>(initialProblem ? "error" : "idle");
+  const [problem, setProblem] = useState(initialProblem);
   const [agentLine, setAgentLine] = useState("");
   const [userLine, setUserLine] = useState("");
 
@@ -97,8 +101,7 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
       attempt.current++;
       ctl.abort();
       endSession();
-      setProblem("The voice agent did not connect. Press Talk to try again, or type your request.");
-      setPhase("error");
+      onHung("The voice agent did not connect. Press Talk to try again, or type your request.");
     }, 20_000);
     try {
       const r = await fetch("/api/voice-agent/session", { cache: "no-store", signal: ctl.signal });
@@ -108,6 +111,7 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
       convo.startSession({ signedUrl: j.signedUrl, connectionType: "websocket" });
     } catch (e) {
       if (attempt.current !== mine) return;
+      attempt.current++; // this attempt is over: the watchdog must not overwrite the real error later
       setProblem((e as Error).message);
       setPhase("error");
     }

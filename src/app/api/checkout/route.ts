@@ -69,7 +69,8 @@ export async function POST(request: Request) {
     const error = unsure
       ? "Visa did not confirm. A hold MAY have been placed; it will lapse on its own if nobody captures it. Do not retry right away."
       : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
-    return Response.json({ error, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
+    // `uncertain` tells the client a hold may exist, so it must not offer a second hold for this purchase
+    return Response.json({ error, uncertain: unsure, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
   }
   // the hold is what Visa authorized: less than asked when a card-linked promotion applied. More than asked is
   // never accepted: release it and refuse, rather than hold an amount the buyer did not agree to.

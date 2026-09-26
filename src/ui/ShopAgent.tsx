@@ -15,7 +15,7 @@ type Listing = { id: string; source: string; region: string | null; url: string;
 type Result = { listing: Listing; screen: Screen };
 type ShopResponse = { engine: "gemini" | "keywords"; reply: string; results: Result[]; counts: { red: number; amber: number; clear: number }; ms: number; error?: string };
 /** A hold Visa really placed (kept through later searches and failed attempts) vs. a failed attempt. */
-type Held = { id: string; handoff: boolean; text: string };
+type Held = { id: string; handoff: boolean; text: string; pending?: boolean };
 type Failed = { id: string; text: string };
 
 /**
@@ -45,18 +45,27 @@ const speechCtor = (): (new () => SR) | null => {
 
 /** An unsettled hold this browser already carries (HELD, or UNKNOWN: Visa may still hold it). Never overwritten. */
 const DEAL_KEY = "shs-deal";
-const readDeal = () => { try { return sessionStorage.getItem(DEAL_KEY); } catch { return null; } };
+/** Written BEFORE every hold attempt and cleared only on a clear yes or no from Visa, so a lost or ambiguous
+ *  answer (a hold MAY exist) blocks a second hold until the parent checks. */
+const PENDING_KEY = "shs-pending";
+const read = (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const readBoth = () => `${read(DEAL_KEY) ?? ""}\n${read(PENDING_KEY) ?? ""}`;
 const noSubscribe = () => () => {};
-function openHold(raw: string | null = readDeal()): Held | null {
-  try {
-    const d = JSON.parse(raw ?? "null") as
-      { dealId?: string; listing?: string; listingId?: string; amountUsd?: number; status?: string } | null;
-    if (!d?.dealId || (d.status !== "HELD" && d.status !== "UNKNOWN")) return null;
+type Stored = { dealId?: string; listing?: string; listingId?: string; amountUsd?: number; status?: string };
+const parse = (raw: string) => { try { return JSON.parse(raw || "null") as Stored | null; } catch { return null; } };
+export function openHold(raw: string = readBoth()): Held | null {
+  const [dealRaw, pendingRaw] = raw.split("\n");
+  const d = parse(dealRaw);
+  if (d?.dealId && (d.status === "HELD" || d.status === "UNKNOWN")) {
     return { id: d.listingId ?? "", handoff: true,
       text: `You already have an open hold: $${(d.amountUsd ?? 0).toFixed(2)} for ${d.listing ?? "a listing"}. Finish it at pickup before holding another.` };
-  } catch {
-    return null;
   }
+  const p = parse(pendingRaw);
+  if (p?.listingId) {
+    return { id: p.listingId, handoff: false, pending: true,
+      text: `Visa did not confirm the hold for ${p.listing ?? "a listing"} ($${(p.amountUsd ?? 0).toFixed(2)}), so one MAY exist. It lapses on its own if nobody captures it. No second hold until you clear this.` };
+  }
+  return null;
 }
 
 export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
@@ -74,8 +83,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   const [proposed, setProposed] = useState("");
   const resRef = useRef<ShopResponse | null>(null);
   // a reload must not forget a hold that is still open at Visa (one open hold at a time); read without an effect
-  const storedDeal = useSyncExternalStore(noSubscribe, readDeal, () => null);
-  const restored = useMemo(() => openHold(storedDeal), [storedDeal]);
+  const [, bump] = useState(0);
+  const stored = useSyncExternalStore(noSubscribe, readBoth, () => "\n");
+  const restored = useMemo(() => openHold(stored), [stored]);
   const shownHeld = held ?? restored;
 
   /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
@@ -150,17 +160,29 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
     setListening(true); rec.start();
   }
 
+  function clearPending() {
+    try { sessionStorage.removeItem(PENDING_KEY); } catch {}
+    setHeld((h) => (h?.pending ? null : h));
+    setFailed(null);
+    bump((n) => n + 1); // re-read storage
+  }
+
   async function buy(r: Result) {
     const l = r.listing;
     const existing = openHold();
     if (existing) { setHeld(existing); setFailed({ id: l.id, text: existing.text }); return; }
     setBuying(l.id); setFailed(null);
+    try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ listingId: l.id, listing: l.title.slice(0, 80), amountUsd: l.priceUsd ?? 0 })); } catch {}
+    let clearNo = false; // true only when Visa (or our server, before Visa) clearly placed no hold
     try {
       const resp = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ listingId: l.id }) });
-      const j = await resp.json();
+      const j = await resp.json().catch(() => ({}));
       const m = j.merchant ?? {};
-      if (!resp.ok || m.status !== "HELD") throw new Error(m.error ?? j.error ?? `HTTP ${resp.status}`);
+      if (!resp.ok || m.status !== "HELD") {
+        clearNo = m.uncertain !== true && typeof (m.error ?? j.error) === "string";
+        throw new Error(m.error ?? j.error ?? `HTTP ${resp.status}`);
+      }
       let handoff = true;
       try {
         sessionStorage.setItem("shs-deal", JSON.stringify({ dealId: m.dealId, listingId: l.id, listing: m.listing, amountUsd: m.amountUsd, token: m.token,
@@ -168,9 +190,17 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
       } catch {
         handoff = false; // private mode or storage blocked: the pickup page could not find this hold
       }
+      try { sessionStorage.removeItem(PENDING_KEY); } catch {}
       setHeld({ id: l.id, handoff, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
     } catch (e) {
-      setFailed({ id: l.id, text: `No hold was placed: ${(e as Error).message}` });
+      if (clearNo) {
+        try { sessionStorage.removeItem(PENDING_KEY); } catch {}
+        setFailed({ id: l.id, text: `No hold was placed: ${(e as Error).message}` });
+      } else {
+        const h = openHold();
+        if (h) setHeld(h);
+        setFailed({ id: l.id, text: `Visa did not confirm (${(e as Error).message}). A hold MAY exist; it lapses on its own if nobody captures it.` });
+      }
     } finally {
       setBuying("");
     }
@@ -230,6 +260,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
             <div role="status" className="rounded-xl border-2 border-ink bg-amber p-3 font-bold">
               {shownHeld.text}
               {shownHeld.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
+              {shownHeld.pending && (
+                <button type="button" onClick={clearPending} className="ml-2 underline">I checked: clear it</button>
+              )}
             </div>
           )}
           {res.results.length === 0 && <p className="hand text-3xl">Nothing matched. Try fewer words or a higher budget.</p>}
@@ -282,6 +315,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
                     <div role="status" className="col-span-2 rounded-xl border-2 border-ink p-3 font-bold bg-amber">
                       {shownHeld.text}
                       {shownHeld.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
+              {shownHeld.pending && (
+                <button type="button" onClick={clearPending} className="ml-2 underline">I checked: clear it</button>
+              )}
                     </div>
                   )}
                   {failed?.id === l.id && (
