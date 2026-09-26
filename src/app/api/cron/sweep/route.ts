@@ -14,6 +14,7 @@ const bearerMatches = (given: string | null, expected: string) => !!given && tim
  * `Authorization: Bearer $CRON_SECRET`; anything else is refused. Each run handles at most 25 deals, oldest first.
  */
 export async function GET(request: Request) {
+  const started = Date.now();
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return Response.json({ error: "CRON_SECRET is not configured." }, { status: 503, headers: NO_STORE });
   const auth = request.headers.get("authorization") ?? "";
@@ -31,9 +32,12 @@ export async function GET(request: Request) {
   const held = await heldBefore(cutoff);
   if (!held) return Response.json({ error: "MongoDB Atlas did not answer; nothing was released." }, { status: 503, headers: NO_STORE });
   const recorded: { dealId: string; status: string; recorded: boolean }[] = [];
-  // each outcome is written right after its Visa call; no new reversal starts after 40 s (maxDuration is 60 s)
+  // Budget from request entry: a reversal can take 20 s (Visa timeout) and its record up to 8 s, so no new one
+  // starts after 25 s and the whole run ends well inside maxDuration (60 s). Each deal is stamped before its
+  // Visa call and its outcome written right after.
   await runSweep(creds, planSweep(held, now), {
-    deadline: Date.now() + 40_000,
+    deadline: started + 25_000,
+    stamp: (id) => recordSweepAttempt(id),
     record: async (o) => {
       const ok = o.status === "UNKNOWN" ? !!(await recordSweepAttempt(o.dealId)) : !!(await recordSweep(o.dealId, o.status, o.note));
       recorded.push({ dealId: o.dealId, status: o.status, recorded: ok });

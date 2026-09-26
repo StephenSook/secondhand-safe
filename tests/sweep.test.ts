@@ -45,6 +45,23 @@ describe("hold sweeper plan", () => {
   });
 });
 
+describe("hold sweeper never loses track of a reversal", () => {
+  it("stamps each deal BEFORE its Visa call", async () => {
+    const order: string[] = [];
+    const f = vi.fn(async () => { order.push("visa"); return Response.json({ id: "r", status: "REVERSED" }, { status: 201 }); });
+    await runSweep(creds, [{ action: "reverse", dealId: "a", amountUsd: 1, authId: "x" }],
+      { f: f as unknown as typeof fetch, stamp: async () => { order.push("stamp"); }, record: async () => { order.push("record"); } });
+    expect(order).toEqual(["stamp", "visa", "record"]);
+  });
+  it("a previously attempted hold that Visa calls not open is labelled as probably released, not 'nothing to release'", () => {
+    const r = visa({ status: "INVALID_REQUEST", reason: "MISSING_AUTH", httpStatus: 400, parsed: true });
+    expect(sweepOutcome("d", r, true).note).toMatch(/earlier sweep attempt most likely released it/);
+    expect(sweepOutcome("d", r, false).note).toMatch(/nothing to release/);
+    const plan = planSweep([{ ...deal("old", 30, "a2"), sweepAttemptAt: hoursAgo(20) }], NOW, 24);
+    expect(plan[0]).toMatchObject({ action: "reverse", attempted: true });
+  });
+});
+
 describe("hold sweeper limits", () => {
   it("never sweeps a hold the buyer can still settle: the window is at least the pickup token's life", () => {
     expect(HOLD_WINDOW_HOURS * 3_600_000).toBeGreaterThan(TTL_MS);
