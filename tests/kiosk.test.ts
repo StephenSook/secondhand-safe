@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSettle, kioskState, mergeRecord, readDealToken } from "@/core/kiosk";
+import { canSettle, kioskState, mergeRecord, readDealToken, recordApplies } from "@/core/kiosk";
 import { issueDealToken } from "@/server/deals/token";
 
 describe("table kiosk state", () => {
@@ -38,5 +38,24 @@ describe("table kiosk state", () => {
     expect(mergeRecord("HELD", undefined)).toBe("HELD");
     expect(mergeRecord("CAPTURED", "HELD")).toBe("CAPTURED");
     expect(mergeRecord("UNKNOWN", "HELD")).toBe("UNKNOWN");
+    expect(mergeRecord("REVERSED", "CAPTURED")).toBe("REVERSED");
+  });
+
+  it("an authoritative final record resolves UNKNOWN (lost answer) and REFUSED (lost race); a non-final one does not", () => {
+    for (const rec of ["CAPTURED", "REVERSED", "RELEASED", "LAPSED"] as const) {
+      expect(mergeRecord("UNKNOWN", rec)).toBe(rec);
+      expect(mergeRecord("REFUSED", rec)).toBe(rec);
+    }
+    expect(mergeRecord("UNKNOWN", "REFUSED")).toBe("UNKNOWN");
+    expect(mergeRecord("REFUSED", "UNKNOWN")).toBe("REFUSED");
+  });
+
+  it("REGRESSION: a delayed record answer for deal A never applies after deal B is attached", () => {
+    const A = "shs-aaaaaaaa01", B = "shs-bbbbbbbb02";
+    expect(recordApplies(A, B, { dealId: A })).toBe(false); // asked for A, B is attached now
+    expect(recordApplies(A, undefined, { dealId: A })).toBe(false); // detached
+    expect(recordApplies(B, B, { dealId: A })).toBe(false); // the answer is for another deal
+    expect(recordApplies(B, B, { dealId: B })).toBe(true);
+    expect(recordApplies(B, B, null)).toBe(true); // "not available" for the attached deal still shows
   });
 });

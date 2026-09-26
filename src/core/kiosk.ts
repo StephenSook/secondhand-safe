@@ -46,11 +46,23 @@ export function kioskState(status: DealStatus | null, verdict?: VerdictKind | nu
 /** Only an open hold can be settled from the kiosk; every other state (including UNKNOWN: money may have moved) is final here. */
 export const canSettle = (status: DealStatus | null) => status === "HELD";
 
+const FINAL: ReadonlySet<DealStatus> = new Set(["CAPTURED", "REVERSED", "RELEASED", "LAPSED"]);
+
 /**
- * The deal record (MongoDB, written by whichever device settled) may move a HELD kiosk to a final status, never
- * the other way: a late or stale record never reopens a deal this kiosk saw settle.
+ * The deal record (MongoDB, written by whichever request settled at Visa) against what this kiosk knows:
+ * - a HELD kiosk takes any settled record (another device settled it);
+ * - an UNKNOWN or REFUSED kiosk (a lost answer, or the loser of a race) takes an authoritative FINAL record,
+ *   so a confirmed capture or reversal resolves the uncertainty;
+ * - nothing ever goes back to HELD, and a final status is never replaced.
  */
 export function mergeRecord(local: DealStatus, record: DealStatus | undefined): DealStatus {
-  if (!record || local !== "HELD") return local;
-  return record;
+  if (!record || record === "HELD" || record === local) return local;
+  if (local === "HELD") return record;
+  if ((local === "UNKNOWN" || local === "REFUSED") && FINAL.has(record)) return record;
+  return local;
+}
+
+/** A record answer applies only to the deal it was asked for, while that deal is still the one attached. */
+export function recordApplies(askedFor: string, attached: string | undefined, record: { dealId?: string } | null): boolean {
+  return !!attached && askedFor === attached && (!record || record.dealId === askedFor);
 }
