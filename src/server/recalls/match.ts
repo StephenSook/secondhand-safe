@@ -1,6 +1,7 @@
 import recallsJson from "../../../data/recalls.json";
 import statsJson from "../../../data/recall_stats.json";
 import type { ProductClass, RecallDoc, Verdict } from "@/core/verdict";
+import { gtinCheckDigit, gtinValid } from "@/core/wedge";
 
 /**
  * Recall matcher (PLAN 1.3) over the index built by data/build_recall_index.py from the CPSC recall API.
@@ -25,6 +26,14 @@ export const isJunkId = (v: string) => JUNK.test(v.trim());
 type Entry = { recall: RecallDoc; value: string };
 const byModel = new Map<string, Entry[]>();
 const byUpc = new Map<string, Entry[]>();
+/** Recall UPCs that are not a complete, valid barcode as printed: 10 or 11 digits (no number-system digit, no
+ *  check digit, or both), or 12 to 14 digits with a wrong check digit (a truncated or mistyped code, such as CPSC
+ *  20-113's 693983769445 for the real 6939837694455). A scanned code that CONTAINS one never moves money either
+ *  way: it keeps the hold (NEEDS_CHECK) for a person to read the label. */
+const shortUpcs: { core: string; body?: string; entry: Entry }[] = [];
+/** One key per product whatever the zero padding: a UPC-A, its EAN-13 ("0" + UPC-A) and its GTIN-14 are the same
+ *  GTIN, and a scanner may send any of them. Leading zeros never change a GTIN check digit. */
+const upcKey = (digits: string) => digits.replace(/^0+/, "");
 for (const r of RECALLS) {
   for (const id of r.identifiers) {
     if (id.kind === "model") {
@@ -33,12 +42,15 @@ for (const r of RECALLS) {
       if (k.length >= MIN_MODEL_LEN) byModel.set(k, [...(byModel.get(k) ?? []), { recall: r, value: id.value }]);
     } else if (id.kind === "upc") {
       const k = id.value.replace(/\D/g, "");
-      if (k.length >= 11) byUpc.set(k, [...(byUpc.get(k) ?? []), { recall: r, value: id.value }]);
+      if (k.length < 10) continue;
+      // a full-length value with a wrong check digit may be a check-digit typo: its body is a candidate too
+      if (k.length <= 11 || !gtinValid(k)) shortUpcs.push({ core: upcKey(k), body: k.length >= 12 ? upcKey(k.slice(0, -1)) : undefined, entry: { recall: r, value: id.value } });
+      else byUpc.set(upcKey(k), [...(byUpc.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
     }
   }
 }
 
-export const INDEX_SIZE = { recalls: RECALLS.length, models: byModel.size, upcs: byUpc.size };
+export const INDEX_SIZE = { recalls: RECALLS.length, models: byModel.size, upcs: byUpc.size + shortUpcs.length };
 
 export interface LabelInput {
   model?: string;
@@ -106,8 +118,21 @@ const pick = (entries: Entry[]) => [...entries].sort((a, b) => b.recall.recallDa
 
 function recallLookup(input: LabelInput): Verdict | undefined {
   if (input.upc) {
-    const hit = byUpc.get(input.upc.replace(/\D/g, ""));
-    if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
+    const d = input.upc.replace(/\D/g, "");
+    // a GTIN-14 with packaging indicator 1-8 is a case of the item whose GTIN is the same body with indicator 0
+    // and a recomputed check digit (GS1), so the item's recall applies to the case too
+    const codes = [d];
+    if (d.length === 14 && /^[1-8]/.test(d)) { const body = `0${d.slice(1, 13)}`; codes.push(`${body}${gtinCheckDigit(body)}`); }
+    for (const code of codes) {
+      const hit = byUpc.get(upcKey(code));
+      if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
+    }
+    const short = shortUpcs.filter((s) => codes.some((c) => c.includes(s.core) || (!!s.body && upcKey(c.slice(0, -1)) === s.body))).map((s) => s.entry);
+    if (short.length) {
+      const e = pick(short);
+      return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "upc", value: input.upc, recallValue: e.value }, asOf: INDEX_AS_OF,
+        reason: `UPC ${d} may be the one ${e.recall.source} recall ${e.recall.recallNumber} lists as ${e.value}, which is printed incomplete or with a wrong check digit, so it cannot be matched for certain. Read the model number on the label before any money moves.` };
+    }
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
@@ -151,9 +176,30 @@ function classVerdict(c: ProductClass | undefined, text: string): Verdict | unde
   return undefined;
 }
 
+/**
+ * A UPC is an identifier only when its GTIN check digit is valid. A corrupted barcode (a misread, a typo) would
+ * otherwise match no recall and read as NO_MATCH, which captures. So an invalid UPC is dropped: with nothing else
+ * to go on the label is UNREADABLE (the hold stays), and with a model number the check runs on that and says so.
+ */
+export function checkLabel(input: LabelInput): Verdict {
+  const upc = input.upc?.replace(/\D/g, "") ?? "";
+  if (!input.upc?.trim() || gtinValid(upc)) return checkValidLabel(input);
+  const why = `UPC ${upc || input.upc?.trim()} is not a valid barcode (its check digit is wrong), so it was not used.`;
+  if (!input.model?.trim()) {
+    return { kind: "UNREADABLE", asOf: INDEX_AS_OF, reason: `${why} Scan it again, or type the model number from the label.` };
+  }
+  const v = checkValidLabel({ ...input, upc: undefined });
+  // positive evidence from the model stands; a clean model with a barcode that did not read decides nothing
+  if (v.kind === "NO_MATCH") {
+    return { kind: "NEEDS_CHECK", asOf: INDEX_AS_OF,
+      reason: `The barcode did not read correctly: UPC ${upc || input.upc?.trim()} fails its check digit. The model number matched no recall, but it is not enough on its own to pay. Read the label before any money moves.` };
+  }
+  return { ...v, reason: `${v.reason} ${why}` };
+}
+
 /** Order: a confirmed recall match, then a banned type (so an uncertain recall hit never hides a ban), then an
  *  uncertain recall hit, then the classifier's own checks. */
-export function checkLabel(input: LabelInput): Verdict {
+function checkValidLabel(input: LabelInput): Verdict {
   const text = (input.text ?? "").toLowerCase();
   const recalled = recallLookup(input);
   if (recalled?.kind === "RECALL_MATCH") return recalled;
