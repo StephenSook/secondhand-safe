@@ -3,7 +3,7 @@ import { authorize, newDealId, reverse } from "@/server/visa/acceptance";
 import { visaCreds, SANDBOX_TEST_CARD } from "@/server/visa/creds";
 import { issueDealToken } from "@/server/deals/token";
 import { verifyAgentRequest } from "@/server/tap/agent";
-import { isTransientToken } from "@/server/visa/microform";
+import { isTransientToken, underLimit } from "@/server/visa/microform";
 import { issueSavedCard, verifySavedCard } from "@/server/visa/savedCard";
 import { recordHold } from "@/server/deals/store";
 import { waitUntil } from "@vercel/functions";
@@ -19,6 +19,12 @@ import { waitUntil } from "@vercel/functions";
 export async function POST(request: Request) {
   const raw = await request.text();
   let agent: { keyid: string } | undefined;
+  // Unsigned (person) checkouts are limited per IP. Signed agent checkouts come from our own /api/agent/checkout,
+  // which limits each client first, so they are not bucketed here by the server's shared egress IP.
+  if (!request.headers.has("signature-input")) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+    if (!underLimit(`checkout:${ip}`, 20)) return Response.json({ error: "Too many checkouts from this address; wait a minute. No payment was attempted." }, { status: 429 });
+  }
   if (request.headers.has("signature-input")) {
     let v;
     try {
