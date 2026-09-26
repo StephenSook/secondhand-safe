@@ -13,6 +13,9 @@ describe("README numbers come from FACTS.json", () => {
   it("NHTSA child seats", () => {
     expect(row("NHTSA child car seat recall campaigns")).toContain(String(facts.recallIndex.nhtsaChildSeatCampaigns));
   });
+  it("identifiers on file", () => {
+    expect(row("Nursery recalls with a model, batch or UPC")).toContain(String(facts.recallIndex.withAnyIdentifier));
+  });
   it("listings scanned", () => {
     expect(row("Real marketplace listings scanned")).toContain(String(facts.scanned));
   });
