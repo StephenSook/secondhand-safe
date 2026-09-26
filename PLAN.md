@@ -170,6 +170,20 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 5.18 | Rate limit on unsigned /api/checkout (20/min per IP, per instance) | `src/app/api/checkout/route.ts` | **Stephen** | ✅ | 1.5 | PR #31. Measured live: 28 of 60 rapid calls refused; the limit is per server instance, so treat it as a speed bump. |
 | 5.19 | Self-hosted fonts (build no longer downloads Google Fonts) | `src/app/fonts/**` | **Stephen** | ✅ | n/a | PR #29. A font download flake had turned main red; production verified serving the 3 local WOFF2 files. |
 
+### Phase 6: Galaxy round 4 (Sat 3:30 PM onward, in this order; Claude builds, Stephen does the H rows)
+
+| # | Component | File(s) | Owner | Status | Deps | Notes |
+|---|---|---|---|---|---|---|
+| 6.1 | Merge the voice agent (#27) after a clean review round; prove it end to end with ElevenLabs' simulated conversation (the agent calls our live webhook) | `src/ui/VoiceAgent.tsx` | **Stephen** | 🟡 | 5.6 | 8 Codex rounds so far; every finding fixed and tested. |
+| 6.2 | Recall watch: store the label fields at settlement; a labelled replay of a real CPSC recall re-checks every captured deal, marks "recalled after sale" on the deal, board, seller view and /trust, and pushes a notification to a subscribed browser | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11 | The Visa post-purchase stage. The replay is labelled as a replay on screen. |
+| 6.3 | MongoDB change stream -> SSE -> /board updates the moment a deal changes | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Replaces 3 s polling (polling stays as the fallback). |
+| 6.4 | Solana passport as a Metaplex Core asset with on-chain Attributes, updated by the recall watch | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | Memo stays as the audit trail. |
+| 6.5 | Server-side one-active-hold per buyer (signed browser id + atomic Atlas claim) and Atlas-backed rate limits (today both are per tab / per server instance) | `src/app/api/checkout/**` | **Stephen** | ⬜ | 1.5 | Money path: adversarial review before merge. |
+| 6.6 | TestFlight upload of the signed iOS build | `mobile/**` | **Stephen** | ⛔ | H8 | Needs the App Store Connect app record (H8). |
+| 6.7 | Second trained model: YOLO label finder (5.10) | `ml/**` | **Stephen** | ⬜ | 1.8 | |
+| 6.8 | Refresh both PDFs + README known limits after 6.1-6.5 | `~/Desktop/*.pdf`, `README.md` | **Stephen** | ⬜ | 6.1 | |
+| 6.9 | Stills of every judge screen, claims audit, Devpost draft through the Devpost connector (not submitted) | `docs/` | **Stephen** | ⬜ | 6.8 | |
+
 ### Human-only steps (account creation, sign-ins, physical parts: Claude cannot do these)
 
 | # | Step | Who | What it unlocks |
@@ -181,6 +195,9 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | H5 | Hardware desk: USB barcode scanner, ACR122U NFC reader + stickers | Stephen | Table Checkpoint (5.12, 3.20) |
 | H6 | One real parent's words, with consent | Stephen | Pitch + Devpost |
 | H7 | Inspiration line, then final submit on Devpost AND expo.hexlabs.org | Stephen | Being judged at all |
+| H8 | Create the app record in App Store Connect ("Lullabuy", bundle id tech.lullabuy.app, already registered). Apple does not allow creating it by API | Stephen | TestFlight upload (6.6): Claude uploads with the API key |
+| H9 | Run `tiger auth login` in a terminal (Tiger Data account exists, its login token expired) | Stephen | Scan-trend hypertable on /trust: MLH Tiger Data |
+| H10 | AirDrop `~/Desktop/Lullabuy-Technical-Guide-Tylin.pdf` to Tylin | Stephen | Tylin's expo prep (TYLIN_TASKS.md T1) |
 
 ### Phase 4: Freeze + submit (Sat 9 PM to Sun 8 AM)
 
@@ -279,4 +296,4 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 5. Secrets never in git: `.env.local` only, plus Vercel and GitHub secrets.
 6. Every number in the README, `/judge`, the video or Devpost comes from `docs/FACTS.json`.
 
-_Last updated: 2026-09-26 15:40 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
+_Last updated: 2026-09-26 15:30 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
