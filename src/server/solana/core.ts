@@ -26,7 +26,7 @@ export const SEND_DEADLINE_MS = 40_000;
 export interface PassportFields { verdict: string; recordSha256: string; indexAsOf: string; dealId: string; status: PassportStatus }
 export type Attr = { key: string; value: string };
 export type CoreResult =
-  | { ok: true; address: string; signature: string }
+  | { ok: true; address: string; signature: string | null }
   | { ok: false; reason: string; address?: string };
 
 export const ASSET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -65,13 +65,13 @@ export function passportUmi(secretB58: string, rpcUrl = DEVNET_RPC): Umi {
   return umi.use(keypairIdentity(umi.eddsa.createKeypairFromSecretKey(secret)));
 }
 
-function umiFromEnv(): Umi | { reason: string } {
+export function umiFromEnv(): Umi | { reason: string } {
   const sec = process.env.SOLANA_SECRET_KEY_B58?.trim();
   if (!sec) return { reason: "SOLANA_SECRET_KEY_B58 is not configured" };
   try { return passportUmi(sec); } catch (e) { return { reason: `passport key unusable: ${(e as Error).message}` }; }
 }
 
-const deadline = <T>(p: Promise<T>, ms: number, what: string) => {
+export const deadline = <T>(p: Promise<T>, ms: number, what: string) => {
   let t: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([p, new Promise<never>((_, bad) => { t = setTimeout(() => bad(new Error(`${what} timed out after ${ms} ms`)), ms); })])
     .finally(() => clearTimeout(t));
@@ -90,19 +90,16 @@ export async function balanceRefusal(umi: Umi): Promise<string | null> {
   }
 }
 
+/** Outcome of one create send. "uncertain" means it may still have landed: never re-send with a new address. */
+export type SendOutcome = { kind: "ok"; signature: string } | { kind: "failed"; reason: string } | { kind: "uncertain"; reason: string };
+
 /**
- * Creates the Core asset for one captured sale. Never retries: a send that errors or times out may still have landed,
- * so the answer is "not written" (with the address, for a manual look) and the Memo passport stands on its own.
+ * Sends the create for one captured sale with a signer the caller generated (and persisted) first, so the address is
+ * known before anything leaves this server. A thrown error or a timeout is "uncertain": the transaction may land.
  */
-export async function createPassportAsset(f: PassportFields, baseUrl: string, umiIn?: Umi): Promise<CoreResult> {
+export async function sendCreate(umi: Umi, asset: ReturnType<typeof generateSigner>, f: PassportFields, baseUrl: string): Promise<SendOutcome> {
   let attributeList: Attr[];
-  try { attributeList = passportAttributes(f); } catch (e) { return { ok: false, reason: (e as Error).message }; }
-  const umi = umiIn ?? umiFromEnv();
-  if (!("rpc" in umi)) return { ok: false, reason: umi.reason };
-  const low = await balanceRefusal(umi);
-  if (low) { console.warn(`[core-passport] refused: ${low}`); return { ok: false, reason: low }; }
-  const asset = generateSigner(umi);
-  const address = asset.publicKey.toString();
+  try { attributeList = passportAttributes(f); } catch (e) { return { kind: "failed", reason: (e as Error).message }; }
   try {
     const res = await deadline(create(umi, {
       asset,
@@ -110,13 +107,15 @@ export async function createPassportAsset(f: PassportFields, baseUrl: string, um
       uri: `${baseUrl.replace(/\/+$/, "")}/api/passport-meta/${f.dealId}`,
       plugins: [{ type: "Attributes", attributeList }],
     }).sendAndConfirm(umi), SEND_DEADLINE_MS, "create");
-    if (res.result.value.err) return { ok: false, reason: `create failed on chain: ${JSON.stringify(res.result.value.err)}`, address };
-    return { ok: true, address, signature: base58.deserialize(res.signature)[0] };
+    if (res.result.value.err) return { kind: "failed", reason: `create failed on chain: ${JSON.stringify(res.result.value.err)}` };
+    return { kind: "ok", signature: base58.deserialize(res.signature)[0] };
   } catch (e) {
-    console.warn(`[core-passport] not written for ${f.dealId} (it may still land at ${address}):`, (e as Error).message);
-    return { ok: false, reason: `not written: ${(e as Error).message}`, address };
+    console.warn(`[core-passport] create for ${f.dealId} unconfirmed (it may still land at ${asset.publicKey.toString()}):`, (e as Error).message);
+    return { kind: "uncertain", reason: (e as Error).message };
   }
 }
+
+export const newAssetSigner = (umi: Umi) => generateSigner(umi);
 
 /** Sets the passport's `status` (and any extra attributes), keeping every other attribute on the asset. */
 export async function updatePassportStatus(assetAddress: string, status: PassportStatus, extra: Record<string, string> = {}, umiIn?: Umi): Promise<CoreResult> {
@@ -128,7 +127,12 @@ export async function updatePassportStatus(assetAddress: string, status: Passpor
   if (low) { console.warn(`[core-passport] refused: ${low}`); return { ok: false, reason: low }; }
   try {
     const asset = await deadline(fetchAsset(umi, publicKey(assetAddress)), 10_000, "fetchAsset");
-    const attributeList = mergeAttributes(asset.attributes?.attributeList ?? [], { ...extra, status });
+    const current = asset.attributes?.attributeList ?? [];
+    const attributeList = mergeAttributes(current, { ...extra, status });
+    // read before write: an earlier update that timed out may have landed; if the chain already says this, send nothing
+    if (JSON.stringify(attributeList) === JSON.stringify(current.map((a) => ({ key: a.key, value: a.value })))) {
+      return { ok: true, address: assetAddress, signature: null };
+    }
     const res = await deadline(updatePlugin(umi, { asset: asset.publicKey, plugin: { type: "Attributes", attributeList } }).sendAndConfirm(umi),
       SEND_DEADLINE_MS, "updatePlugin");
     if (res.result.value.err) return { ok: false, reason: `update failed on chain: ${JSON.stringify(res.result.value.err)}`, address: assetAddress };
@@ -153,10 +157,14 @@ export async function readPassportAsset(address: string, umi: Umi = createUmi(DE
   };
 }
 
-/** What the passport page shows as the asset's verdict: ours, same deal, same record hash. */
-export function judgeAsset(a: PassportAssetView, expectedSigner: string | null, recordSha256: string | null, dealId: string | null) {
+/** What the passport page shows as the asset's verdict: ours, same deal, same record hash, and the same recall state as
+ *  the deal record. A recall the deal knows about but the chain does not (or the reverse) is never shown as verified. */
+export function judgeAsset(a: PassportAssetView, expectedSigner: string | null, recordSha256: string | null, dealId: string | null, dealRecall: string | null = null) {
   const fromUs = !!expectedSigner && a.updateAuthority === expectedSigner;
   const hashOk = !!recordSha256 && a.attributes.recordSha256 === recordSha256;
   const dealOk = !!dealId && a.attributes.dealId === dealId;
-  return { fromUs, hashOk, dealOk, verified: fromUs && hashOk && dealOk };
+  const recallOk = dealRecall
+    ? a.attributes.status === "RECALLED_AFTER_SALE" && a.attributes.recall === dealRecall
+    : a.attributes.status === "CAPTURED" && !Object.hasOwn(a.attributes, "recall");
+  return { fromUs, hashOk, dealOk, recallOk, verified: fromUs && hashOk && dealOk && recallOk };
 }

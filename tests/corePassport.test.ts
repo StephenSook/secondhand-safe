@@ -9,13 +9,14 @@ vi.mock("@metaplex-foundation/mpl-core", async (orig) => {
 });
 import * as core from "@metaplex-foundation/mpl-core";
 import {
-  passportAttributes, mergeAttributes, createPassportAsset, updatePassportStatus, passportUmi, readPassportAsset, judgeAsset,
+  passportAttributes, mergeAttributes, updatePassportStatus, passportUmi, readPassportAsset, judgeAsset,
   MIN_BALANCE_LAMPORTS, type PassportFields,
 } from "@/server/solana/core";
 import { b58encode, recordHash } from "@/server/solana/memo";
 import { passportMeta } from "@/server/solana/meta";
 import { GET as metaRoute } from "@/app/api/passport-meta/[id]/route";
 import { boardDeal, pub, type DealRecord } from "@/server/deals/store";
+import { mintPassport, reconcileMints, PASSPORT_DAILY_CAP, MINT_EXPIRY_MS, type MintClaim, type MintStore } from "@/server/solana/mints";
 
 /** a throwaway ed25519 keypair built at runtime, in the 64-byte Solana layout */
 function freshKeypairB58() {
@@ -63,40 +64,155 @@ describe("Core passport attributes", () => {
   });
 });
 
-describe("minting the asset", () => {
+/** An in-memory MintStore with Atlas's semantics: the claim is a unique-_id insert, the cap counter an atomic $inc. */
+function fakeStore(o: { count?: () => number | null; link?: () => boolean | null; claimDown?: boolean } = {}) {
+  const docs = new Map<string, MintClaim>();
+  let n = 0;
+  const links: string[] = [];
+  const store: MintStore = {
+    claim: async (c) => {
+      await Promise.resolve(); // yield, so concurrent callers interleave before the insert as they would over the network
+      if (o.claimDown) return null;
+      if (docs.has(c._id)) return "lost";
+      docs.set(c._id, { ...c });
+      return "won";
+    },
+    update: async (id, patch) => { const d = docs.get(id); if (!d) return false; docs.set(id, { ...d, ...patch }); return true; },
+    countMint: async () => (o.count ? o.count() : ++n),
+    open: async () => [...docs.values()].filter((d) => d.state === "pending" || d.state === "uncertain" || (d.state === "minted" && !d.linked)),
+    link: async (id, addr) => { const r = o.link ? o.link() : true; if (r) links.push(`${id}=${addr}`); return r; },
+  };
+  return { store, docs, links };
+}
+
+describe("minting the asset (one claim per deal, daily cap, stored address)", () => {
   it("refuses below 0.02 SOL and sends nothing", async () => {
-    const r = await createPassportAsset(FIELDS, "https://example.test", umiWithBalance(MIN_BALANCE_LAMPORTS - 1n));
-    expect(r.ok).toBe(false);
-    expect(!r.ok && r.reason).toMatch(/below the 0\.02 SOL floor/);
+    const { store, docs } = fakeStore();
+    const r = await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(MIN_BALANCE_LAMPORTS - 1n));
+    expect(r.state).toBe("skipped");
+    expect(r.reason).toMatch(/below the 0\.02 SOL floor/);
     expect(core.create).not.toHaveBeenCalled();
+    expect(docs.size).toBe(0);
   });
   it("refuses when the balance cannot be read, and never throws", async () => {
-    const r = await createPassportAsset(FIELDS, "https://example.test", umiWithBalance(new Error("rpc down")));
-    expect(!r.ok && r.reason).toMatch(/could not read the passport wallet balance: rpc down/);
+    const r = await mintPassport(FIELDS, "https://example.test", fakeStore().store, umiWithBalance(new Error("rpc down")));
+    expect(r.reason).toMatch(/could not read the passport wallet balance: rpc down/);
     expect(core.create).not.toHaveBeenCalled();
   });
-  it("creates one asset with the Attributes plugin and a metadata uri on our site", async () => {
-    vi.mocked(core.create).mockReturnValue(sent() as never);
-    const r = await createPassportAsset(FIELDS, "https://example.test/", umiWithBalance(1_000_000_000n));
-    expect(r.ok).toBe(true);
+  it("stores the claim with its address BEFORE sending, then marks it minted and links the deal", async () => {
+    const { store, docs, links } = fakeStore();
+    let atSend: MintClaim | undefined;
+    vi.mocked(core.create).mockImplementation(() => ({ sendAndConfirm: vi.fn().mockImplementation(async () => {
+      atSend = { ...docs.get(FIELDS.dealId)! };
+      return { signature: new Uint8Array(64).fill(7), result: { context: { slot: 1 }, value: { err: null } } };
+    }) }) as never);
+    const r = await mintPassport(FIELDS, "https://example.test/", store, umiWithBalance(1_000_000_000n));
+    expect(r.state).toBe("minted");
+    expect(atSend).toMatchObject({ state: "pending", address: r.address });
     const args = vi.mocked(core.create).mock.calls[0][1];
     expect(args.uri).toBe("https://example.test/api/passport-meta/shs-0123abcd-4567");
     expect(args.plugins).toEqual([{ type: "Attributes", attributeList: passportAttributes(FIELDS) }]);
-    expect(r.ok && r.address).toBe(args.asset.publicKey.toString());
+    expect(args.asset.publicKey.toString()).toBe(r.address);
+    expect(docs.get(FIELDS.dealId)).toMatchObject({ state: "minted", linked: true, address: r.address });
+    expect(links).toEqual([`${FIELDS.dealId}=${r.address}`]);
   });
-  it("a send that throws is reported as not written and is never retried (it may have landed)", async () => {
-    const send = vi.fn().mockRejectedValue(new Error("block height exceeded"));
-    vi.mocked(core.create).mockReturnValue({ sendAndConfirm: send } as never);
-    const r = await createPassportAsset(FIELDS, "https://example.test", umiWithBalance(1_000_000_000n));
-    expect(!r.ok && r.reason).toMatch(/^not written: block height exceeded/);
-    expect(!r.ok && r.address).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
-    expect(send).toHaveBeenCalledTimes(1);
+  it("concurrent mint attempts for one deal: exactly one wins the claim and sends", async () => {
+    const { store, docs } = fakeStore();
+    vi.mocked(core.create).mockReturnValue(sent() as never);
+    const umi = umiWithBalance(1_000_000_000n);
+    const rs = await Promise.all(Array.from({ length: 8 }, () => mintPassport(FIELDS, "https://example.test", store, umi)));
+    expect(rs.filter((r) => r.state === "minted")).toHaveLength(1);
+    expect(rs.filter((r) => r.reason === "this deal already has a mint claim")).toHaveLength(7);
+    expect(core.create).toHaveBeenCalledTimes(1);
+    expect(docs.size).toBe(1);
+  });
+  it("a second mint for the same deal later never generates a second address", async () => {
+    const { store, docs } = fakeStore();
+    vi.mocked(core.create).mockReturnValue(sent() as never);
+    const first = await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n));
+    const again = await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n));
+    expect(again.state).toBe("skipped");
+    expect(docs.get(FIELDS.dealId)?.address).toBe(first.address);
     expect(core.create).toHaveBeenCalledTimes(1);
   });
-  it("a transaction that failed on chain is not a passport", async () => {
+  it("the daily cap fails closed: an unreadable count or a count over the cap sends nothing", async () => {
+    vi.mocked(core.create).mockReturnValue(sent() as never);
+    const unreadable = fakeStore({ count: () => null });
+    const r1 = await mintPassport(FIELDS, "https://example.test", unreadable.store, umiWithBalance(1_000_000_000n));
+    expect(r1).toMatchObject({ state: "refused", reason: expect.stringMatching(/fail closed/) });
+    expect(unreadable.docs.get(FIELDS.dealId)?.state).toBe("refused");
+    const over = fakeStore({ count: () => PASSPORT_DAILY_CAP + 1 });
+    const r2 = await mintPassport(FIELDS, "https://example.test", over.store, umiWithBalance(1_000_000_000n));
+    expect(r2).toMatchObject({ state: "refused", reason: expect.stringMatching(/daily passport cap/) });
+    const atCap = fakeStore({ count: () => PASSPORT_DAILY_CAP });
+    expect((await mintPassport(FIELDS, "https://example.test", atCap.store, umiWithBalance(1_000_000_000n))).state).toBe("minted");
+    expect(core.create).toHaveBeenCalledTimes(1);
+  });
+  it("without a reachable claim store nothing is sent (fail closed)", async () => {
+    vi.mocked(core.create).mockReturnValue(sent() as never);
+    const r = await mintPassport(FIELDS, "https://example.test", fakeStore({ claimDown: true }).store, umiWithBalance(1_000_000_000n));
+    expect(r.reason).toMatch(/not reachable/);
+    expect(core.create).not.toHaveBeenCalled();
+  });
+  it("ambiguous confirmation: a send that times out is stored as uncertain with its address, never re-sent, and reconciled when it lands", async () => {
+    const { store, docs, links } = fakeStore();
+    const send = vi.fn().mockRejectedValue(new Error("create timed out after 40000 ms"));
+    vi.mocked(core.create).mockReturnValue({ sendAndConfirm: send } as never);
+    const r = await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n));
+    expect(r.state).toBe("uncertain");
+    expect(docs.get(FIELDS.dealId)).toMatchObject({ state: "uncertain", address: r.address, linked: false });
+    expect(send).toHaveBeenCalledTimes(1);
+    // the next cron: the transaction did land, at the stored address
+    const read = vi.fn(async (a: string) => (a === r.address ? { address: a } : null));
+    const rec = await reconcileMints({ store, read });
+    expect(read).toHaveBeenCalledWith(r.address);
+    expect(rec.results).toEqual([{ dealId: FIELDS.dealId, result: "found on chain, linked" }]);
+    expect(docs.get(FIELDS.dealId)).toMatchObject({ state: "minted", linked: true });
+    expect(links).toEqual([`${FIELDS.dealId}=${r.address}`]);
+    expect(core.create).toHaveBeenCalledTimes(1);
+  });
+  it("an uncertain claim whose transaction never landed is closed as failed only after it can no longer land", async () => {
+    const { store, docs } = fakeStore();
+    vi.mocked(core.create).mockReturnValue({ sendAndConfirm: vi.fn().mockRejectedValue(new Error("timeout")) } as never);
+    const t0 = Date.parse("2026-09-26T12:00:00Z");
+    await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n), () => t0);
+    const read = vi.fn(async () => null);
+    expect((await reconcileMints({ store, read, now: () => t0 + 60_000 })).results[0].result).toBe("not on chain yet");
+    expect(docs.get(FIELDS.dealId)?.state).toBe("uncertain");
+    expect((await reconcileMints({ store, read, now: () => t0 + MINT_EXPIRY_MS + 1 })).results[0].result).toBe("never landed");
+    expect(docs.get(FIELDS.dealId)?.state).toBe("failed");
+  });
+  it("Atlas association failure: the asset is minted but the deal link fails, and the next reconcile links it", async () => {
+    let linkUp = false;
+    const { store, docs, links } = fakeStore({ link: () => linkUp });
+    vi.mocked(core.create).mockReturnValue(sent() as never);
+    const r = await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n));
+    expect(r.state).toBe("minted");
+    expect(docs.get(FIELDS.dealId)).toMatchObject({ state: "minted", linked: false });
+    const read = vi.fn();
+    expect((await reconcileMints({ store, read })).results).toEqual([{ dealId: FIELDS.dealId, result: "link retry next run" }]);
+    linkUp = true;
+    expect((await reconcileMints({ store, read })).results).toEqual([{ dealId: FIELDS.dealId, result: "linked" }]);
+    expect(docs.get(FIELDS.dealId)?.linked).toBe(true);
+    expect(links).toEqual([`${FIELDS.dealId}=${r.address}`]);
+    expect(read).not.toHaveBeenCalled(); // a known-minted claim needs no devnet read
+    expect(core.create).toHaveBeenCalledTimes(1);
+  });
+  it("reconcile starts no devnet read once the deadline says stop", async () => {
+    const { store } = fakeStore();
+    vi.mocked(core.create).mockReturnValue({ sendAndConfirm: vi.fn().mockRejectedValue(new Error("timeout")) } as never);
+    await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n));
+    const read = vi.fn();
+    expect((await reconcileMints({ store, read, canStartChainWork: () => false })).results[0].result).toBe("deferred");
+    expect(read).not.toHaveBeenCalled();
+  });
+  it("a transaction that failed on chain is recorded as failed, not reconciled", async () => {
+    const { store, docs } = fakeStore();
     vi.mocked(core.create).mockReturnValue(sent({ InstructionError: [0, "Custom"] }) as never);
-    const r = await createPassportAsset(FIELDS, "https://example.test", umiWithBalance(1_000_000_000n));
-    expect(!r.ok && r.reason).toMatch(/failed on chain/);
+    const r = await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(1_000_000_000n));
+    expect(r.state).toBe("failed");
+    expect(docs.get(FIELDS.dealId)?.state).toBe("failed");
+    expect(await store.open(25)).toEqual([]);
   });
 });
 
@@ -112,6 +228,14 @@ describe("updatePassportStatus", () => {
     expect(Object.fromEntries(list.map((a) => [a.key, a.value]))).toEqual({
       verdict: "NO_MATCH", recordSha256: HASH, indexAsOf: "2026-09-20", dealId: "shs-0123abcd-4567", status: "RECALLED_AFTER_SALE", note: "kept", recall: "26-123",
     });
+  });
+  it("reads before it writes: when an earlier ambiguous update already landed, it sends nothing", async () => {
+    const umi = umiWithBalance(1_000_000_000n);
+    const landed = mergeAttributes(passportAttributes(FIELDS), { status: "RECALLED_AFTER_SALE", recall: "26-123" });
+    vi.mocked(core.fetchAsset).mockResolvedValue({ publicKey: ADDR, attributes: { attributeList: landed } } as never);
+    const r = await updatePassportStatus(ADDR, "RECALLED_AFTER_SALE", { recall: "26-123" }, umi);
+    expect(r).toEqual({ ok: true, address: ADDR, signature: null });
+    expect(core.updatePlugin).not.toHaveBeenCalled();
   });
   it("refuses a malformed address or a low balance without touching the chain", async () => {
     expect((await updatePassportStatus("not-an-address", "RECALLED_AFTER_SALE", {}, umiWithBalance(1_000_000_000n))).ok).toBe(false);
@@ -145,6 +269,17 @@ describe("reading the asset back for the passport page", () => {
     expect(judgeAsset(a!, signer, HASH, "shs-ffffffff-0000").dealOk).toBe(false);
     vi.mocked(core.safeFetchAssetV1).mockResolvedValueOnce(null);
     expect(await readPassportAsset(ADDR, umi)).toBeNull();
+  });
+  it("a recall the deal knows about but the chain does not (or a different recall) is never verified", () => {
+    const view = (attrs: Record<string, string>) => ({ address: ADDR, name: "n", uri: "u", owner: "S", updateAuthority: "S", attributes: attrs });
+    const base = { verdict: "NO_MATCH", recordSha256: HASH, indexAsOf: "2026-09-20", dealId: FIELDS.dealId };
+    expect(judgeAsset(view({ ...base, status: "CAPTURED" }), "S", HASH, FIELDS.dealId, null).verified).toBe(true);
+    const stale = judgeAsset(view({ ...base, status: "CAPTURED" }), "S", HASH, FIELDS.dealId, "26-200");
+    expect(stale).toMatchObject({ recallOk: false, verified: false });
+    const older = judgeAsset(view({ ...base, status: "RECALLED_AFTER_SALE", recall: "26-100" }), "S", HASH, FIELDS.dealId, "26-200");
+    expect(older).toMatchObject({ recallOk: false, verified: false });
+    expect(judgeAsset(view({ ...base, status: "RECALLED_AFTER_SALE", recall: "26-200" }), "S", HASH, FIELDS.dealId, "26-200").verified).toBe(true);
+    expect(judgeAsset(view({ ...base, status: "RECALLED_AFTER_SALE", recall: "26-200" }), "S", HASH, FIELDS.dealId, null).verified).toBe(false);
   });
 });
 

@@ -1,10 +1,16 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { flagPostSaleRecall, recordPassportAssetStatus, watchedSales } from "@/server/deals/store";
+import { flagPostSaleRecall, recordPassportAssetRecall, watchedSales } from "@/server/deals/store";
 import { updatePassportStatus } from "@/server/solana/core";
+import { reconcileMints } from "@/server/solana/mints";
 import { recheckSales } from "@/server/watch/recheck";
 import { notify } from "@/server/watch/push";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
+/** Chain work stops being started once less than this remains: one update can take balance 8 s + fetch 10 s + a 40 s
+ *  send + an 8 s Atlas write (66 s), so 90 s leaves headroom. Anything not started runs on the next day's cron. */
+const CHAIN_HEADROOM_MS = 90_000;
+/** at most this many on-chain recall updates per run, one at a time (no burst of RPC sends) */
+const CHAIN_UPDATES_PER_RUN = 3;
 const NO_STORE = { "cache-control": "no-store" };
 const sha = (s: string) => createHash("sha256").update(s).digest();
 const bearerMatches = (given: string | null, expected: string) => !!given && timingSafeEqual(sha(given), sha(expected));
@@ -12,9 +18,12 @@ const bearerMatches = (given: string | null, expected: string) => !!given && tim
 /**
  * GET (Vercel Cron, Bearer CRON_SECRET): the real recall watch. Re-checks every captured sale's label against the
  * current recall index; a sale that now matches a recall is flagged on its deal record and its watching browsers
- * are notified. Idempotent: a sale is flagged once per recall.
+ * are notified. Idempotent: a sale is flagged once per recall. Then the on-chain passports follow the deal records,
+ * and mint claims a pickup left open are reconciled.
  */
 export async function GET(request: Request) {
+  const began = Date.now();
+  const canStartChainWork = () => began + maxDuration * 1000 - Date.now() >= CHAIN_HEADROOM_MS;
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return Response.json({ error: "CRON_SECRET is not configured." }, { status: 503, headers: NO_STORE });
   const auth = request.headers.get("authorization") ?? "";
@@ -32,16 +41,24 @@ export async function GET(request: Request) {
     const newly = delivered ? await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url }, push.sent) : false;
     out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered });
   }
-  // the on-chain passport follows the flag: every flagged sale with a Core asset whose status we have not yet
-  // confirmed as RECALLED_AFTER_SALE (a newly flagged one, or one whose earlier update did not land)
-  const flagged = new Map<string, string>();
-  for (const s of sales) if (s.postSaleRecall?.recallNumber) flagged.set(s._id, s.postSaleRecall.recallNumber);
-  for (const o of out) if (o.flagged) flagged.set(o.dealId, o.recallNumber);
-  const pending = sales.filter((s) => s.passportAsset && s.passportAssetStatus !== "RECALLED_AFTER_SALE" && flagged.has(s._id));
-  const chain = await Promise.all(pending.map(async (s) => {
-    const r = await updatePassportStatus(s.passportAsset as string, "RECALLED_AFTER_SALE", { recall: flagged.get(s._id) as string });
-    if (r.ok) await recordPassportAssetStatus(s._id, "RECALLED_AFTER_SALE");
-    return { dealId: s._id, asset: s.passportAsset, updated: r.ok, ...(r.ok ? { signature: r.signature } : { reason: r.reason }) };
-  }));
-  return Response.json({ checked: sales.length, hits: out, passportAssets: chain }, { headers: NO_STORE });
+  // the on-chain passport follows the deal record: every sale with a Core asset whose confirmed recall differs from the
+  // deal's current recall (a newly flagged one, a later second recall, or an earlier update that did not land)
+  const recallOf = new Map<string, string>();
+  for (const s of sales) if (s.postSaleRecall?.recallNumber) recallOf.set(s._id, s.postSaleRecall.recallNumber);
+  for (const o of out) if (o.flagged) recallOf.set(o.dealId, o.recallNumber);
+  const pending = sales.filter((s) => s.passportAsset && recallOf.has(s._id) && s.passportAssetRecall !== recallOf.get(s._id));
+  const chain: Record<string, unknown>[] = [];
+  let begun = 0;
+  for (const s of pending) {
+    const asset = s.passportAsset as string, recall = recallOf.get(s._id) as string;
+    if (begun >= CHAIN_UPDATES_PER_RUN || !canStartChainWork()) { chain.push({ dealId: s._id, asset, recall, deferred: true }); continue; }
+    begun++;
+    // updatePassportStatus reads the asset first and sends nothing when an earlier (ambiguous) update already landed
+    const r = await updatePassportStatus(asset, "RECALLED_AFTER_SALE", { recall });
+    const recorded = r.ok ? await recordPassportAssetRecall(s._id, asset, recall) : null;
+    chain.push({ dealId: s._id, asset, recall, updated: r.ok, ...(r.ok ? { signature: r.signature, recorded: !!recorded } : { reason: r.reason }) });
+  }
+  // mint claims a pickup left pending or uncertain (a timeout, a lost Atlas write): look at their stored address
+  const mints = await reconcileMints({ canStartChainWork });
+  return Response.json({ checked: sales.length, hits: out, passportAssets: chain, mints }, { headers: NO_STORE });
 }

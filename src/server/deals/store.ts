@@ -32,8 +32,11 @@ export interface DealRecord {
   postSaleRecall?: { recallNumber: string; title: string; url: string; at: string } | null;
   /** the sale's Metaplex Core asset on Solana devnet (a public address, src/server/solana/core.ts) */
   passportAsset?: string | null;
-  /** the `status` attribute we last confirmed on that asset (the recall watch retries until it reads the recall) */
+  /** the `status` attribute we last confirmed on that asset */
   passportAssetStatus?: string | null;
+  /** the recall number we last confirmed on that asset; the recall watch updates the chain whenever it differs from
+   *  postSaleRecall.recallNumber (a second, later recall included) */
+  passportAssetRecall?: string | null;
 }
 export interface SaleLabel { model: string | null; batch: string | null; date: string | null; upc: string | null }
 
@@ -186,7 +189,7 @@ export function watchedSales(limit = 1000) {
     const c = await deals();
     if (!c) return null;
     return c.find({ status: "CAPTURED", $or: [{ "label.model": { $type: "string" } }, { "label.upc": { $type: "string" } }] },
-      { projection: { _id: 1, listing: 1, label: 1, postSaleRecall: 1, updatedAt: 1, passportAsset: 1, passportAssetStatus: 1 }, sort: { updatedAt: -1 }, limit }).toArray();
+      { projection: { _id: 1, listing: 1, label: 1, postSaleRecall: 1, updatedAt: 1, passportAsset: 1, passportAssetStatus: 1, passportAssetRecall: 1 }, sort: { updatedAt: -1 }, limit }).toArray();
   }, 6000);
 }
 
@@ -208,29 +211,40 @@ export function recordPassportAsset(dealId: string, address: string) {
   return safely("recordPassportAsset", async () => {
     const c = await deals();
     if (!c) return false;
-    const update = () => {
+    // idempotent: links only an unlinked sale (a reconcile retry never duplicates the event or replaces another asset)
+    const attempt = async () => {
       const at = new Date().toISOString();
-      return c.updateOne({ _id: dealId, status: "CAPTURED" }, { $set: { passportAsset: address, passportAssetStatus: "CAPTURED", updatedAt: at },
-        $push: { events: { at, status: "CAPTURED", note: "Item passport minted as a Metaplex Core asset on Solana devnet" } } });
+      const r = await c.updateOne({ _id: dealId, status: "CAPTURED", passportAsset: { $in: [null] } },
+        { $set: { passportAsset: address, passportAssetStatus: "CAPTURED", passportAssetRecall: null, updatedAt: at },
+          $push: { events: { at, status: "CAPTURED", note: "Item passport minted as a Metaplex Core asset on Solana devnet" } } });
+      if (r.matchedCount === 1) return true;
+      const d = await c.findOne({ _id: dealId }, { projection: { status: 1, passportAsset: 1 } });
+      if (d?.passportAsset === address) return true;
+      if (d?.status === "CAPTURED" && d.passportAsset) {
+        console.warn(`[deals] recordPassportAsset: ${dealId} already points at another asset; ${address} is not linked`);
+        return false;
+      }
+      return null; // no captured record yet: wait for the settlement write
     };
-    let r = await update();
-    for (let i = 0; i < 3 && r.matchedCount === 0; i++) {
-      await new Promise((ok) => setTimeout(ok, 1500));
-      r = await update();
+    let ok = await attempt();
+    for (let i = 0; i < 3 && ok === null; i++) {
+      await new Promise((done) => setTimeout(done, 1500));
+      ok = await attempt();
     }
-    if (r.matchedCount === 0) console.warn(`[deals] recordPassportAsset: no captured record for ${dealId}; asset ${address} is not linked`);
-    return r.matchedCount === 1;
+    if (ok === null) console.warn(`[deals] recordPassportAsset: no captured record for ${dealId}; asset ${address} is not linked yet`);
+    return ok === true;
   }, 12_000);
 }
 
-/** Records the `status` attribute confirmed on the sale's Core asset. */
-export function recordPassportAssetStatus(dealId: string, status: string) {
-  return safely("recordPassportAssetStatus", async () => {
+/** Records the recall now confirmed on the sale's Core asset, only if the deal still points at that asset. */
+export function recordPassportAssetRecall(dealId: string, address: string, recallNumber: string) {
+  return safely("recordPassportAssetRecall", async () => {
     const c = await deals();
     if (!c) return false;
     const at = new Date().toISOString();
-    const r = await c.updateOne({ _id: dealId }, { $set: { passportAssetStatus: status, updatedAt: at },
-      $push: { events: { at, status: "CAPTURED", note: `Item passport asset on Solana devnet now reads status ${status}` } } });
-    return r.modifiedCount === 1;
+    const r = await c.updateOne({ _id: dealId, passportAsset: address },
+      { $set: { passportAssetStatus: "RECALLED_AFTER_SALE", passportAssetRecall: recallNumber, updatedAt: at },
+        $push: { events: { at, status: "CAPTURED", note: `Item passport asset on Solana devnet now reads RECALLED_AFTER_SALE (CPSC ${recallNumber})` } } });
+    return r.matchedCount === 1;
   });
 }

@@ -5,12 +5,13 @@ import { verifyDealToken } from "@/server/deals/token";
 import { settle } from "@/server/deals/settle";
 import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
-import { recordPassportAsset, recordSettlement } from "@/server/deals/store";
-import { createPassportAsset } from "@/server/solana/core";
+import { recordSettlement } from "@/server/deals/store";
+import { mintPassport } from "@/server/solana/mints";
 import { waitUntil } from "@vercel/functions";
 
-// the Core asset mint runs after the response (waitUntil) and is bounded by its own 40 s send deadline
-export const maxDuration = 60;
+// the Core asset mint runs after the response (waitUntil): balance 8 s + claim + cap + a 40 s send + writes (up to 12 s).
+// If the function is stopped anyway, the claim stays pending with its address and the watch cron reconciles it.
+export const maxDuration = 120;
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 
@@ -52,8 +53,9 @@ export async function POST(request: Request) {
       passport = { signature, path: `/passport/${signature}?r=${Buffer.from(record).toString("base64url")}` };
       // the on-chain asset: after the response, never on the Visa or Memo path; a failure only means no asset
       const base = process.env.PUBLIC_BASE_URL?.trim() || new URL(request.url).origin;
-      waitUntil(createPassportAsset({ verdict: verdict.kind, recordSha256: sha, indexAsOf: verdict.asOf, dealId: deal.dealId, status: "CAPTURED" }, base)
-        .then((a) => (a.ok ? recordPassportAsset(deal.dealId, a.address) : null))
+      // one claim per deal in Atlas, a daily cap that fails closed, and a stored address the cron can reconcile
+      waitUntil(mintPassport({ verdict: verdict.kind, recordSha256: sha, indexAsOf: verdict.asOf, dealId: deal.dealId, status: "CAPTURED" }, base)
+        .then((m) => { if (m.state !== "minted") console.warn(`[core-passport] ${deal.dealId}: ${m.state}${m.reason ? `: ${m.reason}` : ""}`); })
         .catch((e) => console.warn("[core-passport] mint task failed:", (e as Error).message)));
     } catch (e) {
       passport = { error: `Passport not written: ${(e as Error).message}` };

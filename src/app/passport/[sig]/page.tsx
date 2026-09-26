@@ -39,14 +39,16 @@ export default async function PassportPage({ params, searchParams }: { params: P
   let assetAddr: string | null = null;
   let asset: PassportAssetView | null = null;
   let assetState: "none" | "ok" | "missing" | "rpc" = "none";
+  let dealRecall: string | null = null;
   if (dealId && j?.verified) {
     const d = await getDeal(dealId);
     assetAddr = d.state === "ok" ? d.deal.passportAsset ?? null : null;
+    dealRecall = d.state === "ok" ? d.deal.postSaleRecall?.recallNumber ?? null : null;
     if (assetAddr) {
       try { asset = await readPassportAsset(assetAddr); assetState = asset ? "ok" : "missing"; } catch { assetState = "rpc"; }
     }
   }
-  const aj = asset ? judgeAsset(asset, signer, json ? recordHash(json) : null, dealId) : null;
+  const aj = asset ? judgeAsset(asset, signer, json ? recordHash(json) : null, dealId, dealRecall) : null;
   return (
     <>
       <Nav />
@@ -83,14 +85,17 @@ export default async function PassportPage({ params, searchParams }: { params: P
                 <>
                   <p className="display text-2xl mt-1">{aj.verified ? "✓ The asset's on-chain attributes match this record"
                     : !aj.fromUs ? "✕ This asset is not under Lullabuy's passport key"
-                    : !aj.dealOk ? "✕ The asset names a different deal" : "✕ The asset's record hash does NOT match this record"}</p>
+                    : !aj.dealOk ? "✕ The asset names a different deal"
+                    : !aj.hashOk ? "✕ The asset's record hash does NOT match this record"
+                    : dealRecall ? `✕ The deal record shows recall CPSC ${dealRecall}; the chain has not caught up yet`
+                    : "✕ The asset's recall status does not match the deal record"}</p>
                   <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-sm">
                     <dt>asset</dt><dd className="break-all">{asset.address}</dd>
                     {Object.entries(asset.attributes).map(([k, v]) => (
                       <Fragment key={k}><dt>{k}</dt><dd className="break-all">{v}</dd></Fragment>
                     ))}
                   </dl>
-                  {asset.attributes.status === "RECALLED_AFTER_SALE" && (
+                  {(asset.attributes.status === "RECALLED_AFTER_SALE" || dealRecall) && (
                     <p className="mt-3 font-bold">A recall was announced after this sale. Stop using the item and read the recall notice.</p>
                   )}
                 </>
