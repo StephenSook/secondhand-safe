@@ -58,6 +58,9 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
 
 ## How it works
 
+0. **Find it.** `/shop`: say or type what you need. Gemini 3.5 Flash turns it into filters over 1,662 real
+   eBay and Craigslist listings we scanned, and every result arrives pre-screened (recall index, our photo
+   model, our own review). Red listings cannot be bought, and the server enforces it.
 1. **Agree and hold.** The buyer types the card into Visa Acceptance **Microform** fields (Visa's iframes,
    so the card number never reaches our server). The transient token is authorized with capture off. An AI
    agent buying for a parent signs its request with the **Trusted Agent Protocol** (RFC 9421, Ed25519),
@@ -68,11 +71,13 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
 3. **Check.** `src/server/recalls/match.ts`: O/0 and I/1 folding, batch-restricted recalls, and the legal
    rules (inclined sleepers and padded crib bumpers banned, mesh liners excepted, drop-side cribs not
    resellable, in-bed sleepers and car seats need a check). The vocabulary never says "safe".
-4. **Capture or reverse.**
+4. **Capture or reverse.** A captured sale gets an item passport: the SHA-256 of the pickup record written to
+   Solana devnet in a Memo transaction, which `/passport/<signature>` reads back and recomputes (live once the
+   devnet wallet is funded).
 
 ## Repo map
 
-- `src/` Next.js 16 app: landing, `/pickup`, `/judge`, public API (`/api/check`, `/api/stats`, `/api/health`, `/api/label`, `/api/mcp`).
+- `src/` Next.js 16 app: landing, `/shop`, `/pickup`, `/passport`, `/judge`, public API (`/api/check`, `/api/stats`, `/api/health`, `/api/label`, `/api/mcp`, `/api/shop`). Gemini in production uses no stored key: Vercel's OIDC token is exchanged through Google Workload Identity Federation (`src/server/ml/gcpToken.ts`).
 - `data/build_recall_index.py` CPSC recall index; `data/handcheck.md` the hand checks and the defects they found.
 - `ml/` harvest, review sheets, training, eval, scan, facts. `docs/design/` the motion reference study.
 - CI: lint, typecheck, unit tests, build, pytest, classifier parity (JS vs sklearn), Playwright e2e, gitleaks, em-dash gate.
