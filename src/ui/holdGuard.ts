@@ -14,7 +14,7 @@ type Stored = { dealId?: string; listing?: string; listingId?: string; amountUsd
 /** A stored hold older than the pickup token's life (12 h) can no longer be settled from this browser, and the
  *  daily sweeper releases it at Visa, so it stops blocking new holds. */
 const STALE_MS = 12 * 60 * 60 * 1000;
-const stale = (at?: string) => { const t = Date.parse(at ?? ""); return Number.isFinite(t) && Date.now() - t > STALE_MS; };
+export const stale = (at?: string) => { const t = Date.parse(at ?? ""); return Number.isFinite(t) && Date.now() - t > STALE_MS; };
 
 const read = (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } };
 const parse = (raw: string) => { try { return JSON.parse(raw || "null") as Stored | null; } catch { return null; } };
