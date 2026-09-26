@@ -151,7 +151,7 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
 | 5.1 | Live probe: red since the rebrand (it grepped the old name); now both origins + Atlas deals + MCP | `.github/workflows/probe.yml` | **Stephen** | ✅ | n/a | PR #24 merged; both origins green (verified by hand and in Actions). |
-| 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | 🟡 | 3.11 | PR #32 open: Atlas index img_vec READY (1,101 recall + 1,662 listing photos), /api/lookalike, card on /pickup. Held-out eval: right recall first 41.7%, top-3 47.2% (144 photos, ml/out/lookalike_eval.json). Resemblance never flags anything. |
+| 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | ✅ | 3.11 | PR #32 merged + deployed; verified live (POST embedding and GET ?listingId=). Held-out eval: right recall first 60/144 (41.7%), top-3 68/144 (47.2%), reproducible (ml/sample_second_photos.py + scripts/eval-lookalike.mjs). Reviewed by Claude + Grok. Resemblance never flags anything. |
 | 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Not started. /board polls every 3 s, which works for the demo. |
 | 5.4 | Hold sweeper: Vercel cron reverses holds past their window; the board shows RELEASED | `src/app/api/cron/**`, `vercel.json` | **Stephen** | ✅ | 1.5 | PR #28 merged + deployed. Daily Vercel cron 13:17 UTC (9:17 AM ET). 3 review rounds (Claude x2, Grok). Verified live: 401 without CRON_SECRET, 200 with it. |
 | 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11, 3.12 | Not started (needs label fields stored per deal + web push). |
@@ -198,8 +198,7 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 | PR | What | State | Merge rule |
 |---|---|---|---|
-| #27 | ElevenLabs voice agent on /shop + duplicate-hold guard | Codex round 4 running | merge only after a clean review round and green CI |
-| #32 | Atlas Vector Search look-alike on /pickup | CI running | merge after green CI; then deploy |
+| #27 | ElevenLabs voice agent on /shop + duplicate-hold guard | Codex round 5 running (rounds 1-4 fixed) | merge only after a clean review round and green CI |
 
 Deploys are manual (no Git auto-deploy): from a clean `git worktree add --detach <dir> origin/main`, copy `.vercel/`,
 check `projectName` is `secondhand-safe-web`, then `npx vercel --prod --yes`. Verify with the probe (both origins).
