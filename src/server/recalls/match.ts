@@ -1,6 +1,7 @@
 import recallsJson from "../../../data/recalls.json";
 import statsJson from "../../../data/recall_stats.json";
 import type { ProductClass, RecallDoc, Verdict } from "@/core/verdict";
+import { gtinValid } from "@/core/wedge";
 
 /**
  * Recall matcher (PLAN 1.3) over the index built by data/build_recall_index.py from the CPSC recall API.
@@ -25,6 +26,11 @@ export const isJunkId = (v: string) => JUNK.test(v.trim());
 type Entry = { recall: RecallDoc; value: string };
 const byModel = new Map<string, Entry[]>();
 const byUpc = new Map<string, Entry[]>();
+/** 11-digit recall UPCs: a UPC-A printed without its check digit. */
+const byUpcNoCheck = new Map<string, Entry[]>();
+/** One key per product whatever the zero padding: a UPC-A, its EAN-13 ("0" + UPC-A) and its GTIN-14 are the same
+ *  GTIN, and a scanner may send any of them. Leading zeros never change a GTIN check digit. */
+const upcKey = (digits: string) => digits.replace(/^0+/, "");
 for (const r of RECALLS) {
   for (const id of r.identifiers) {
     if (id.kind === "model") {
@@ -33,7 +39,9 @@ for (const r of RECALLS) {
       if (k.length >= MIN_MODEL_LEN) byModel.set(k, [...(byModel.get(k) ?? []), { recall: r, value: id.value }]);
     } else if (id.kind === "upc") {
       const k = id.value.replace(/\D/g, "");
-      if (k.length >= 11) byUpc.set(k, [...(byUpc.get(k) ?? []), { recall: r, value: id.value }]);
+      if (k.length < 11) continue;
+      byUpc.set(upcKey(k), [...(byUpc.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
+      if (k.length === 11) byUpcNoCheck.set(upcKey(k), [...(byUpcNoCheck.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
     }
   }
 }
@@ -106,7 +114,9 @@ const pick = (entries: Entry[]) => [...entries].sort((a, b) => b.recall.recallDa
 
 function recallLookup(input: LabelInput): Verdict | undefined {
   if (input.upc) {
-    const hit = byUpc.get(input.upc.replace(/\D/g, ""));
+    const d = input.upc.replace(/\D/g, "");
+    // a full barcode (valid check digit) also matches a recall that printed it without the check digit
+    const hit = byUpc.get(upcKey(d)) ?? (d.length >= 12 && gtinValid(d) ? byUpcNoCheck.get(upcKey(d.slice(0, -1))) : undefined);
     if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {

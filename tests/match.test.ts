@@ -125,3 +125,22 @@ describe("short all-digit model numbers never move money on their own (real Delt
     expect(checkLabel({ model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH");
   });
 });
+
+describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", () => {
+  it("a recalled UPC-A matches as scanned, as its EAN-13 (0 + UPC-A) and as its GTIN-14 (00 + UPC-A)", () => {
+    for (const upc of ["669028116546", "0669028116546", "00669028116546"]) {
+      expect(checkLabel({ upc }).kind, upc).toBe("RECALL_MATCH");
+      expect(checkLabel({ upc }).recall?.recallNumber).toBe("26530");
+    }
+  });
+  it("a full scanned code matches a recall that printed the UPC without its check digit (CPSC 12017, 06626491474)", () => {
+    expect(checkLabel({ upc: "066264914743" }).kind).toBe("RECALL_MATCH");
+    expect(checkLabel({ upc: "066264914743" }).recall?.recallNumber).toBe("12017");
+  });
+  it("a code whose check digit is wrong does not borrow that rule (066264914740 is not a barcode)", () => {
+    expect(checkLabel({ upc: "066264914740" }).kind).toBe("NO_MATCH");
+  });
+  it("a clean UPC with no recall is NO_MATCH (the e2e capture UPC)", () => {
+    expect(checkLabel({ upc: "012345678905" }).kind).toBe("NO_MATCH");
+  });
+});
