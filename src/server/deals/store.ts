@@ -30,6 +30,10 @@ export interface DealRecord {
   label?: SaleLabel | null;
   /** a recall that matched this sale AFTER it was captured (recall watch, src/server/watch/) */
   postSaleRecall?: { recallNumber: string; title: string; url: string; at: string } | null;
+  /** the sale's Metaplex Core asset on Solana devnet (a public address, src/server/solana/core.ts) */
+  passportAsset?: string | null;
+  /** the `status` attribute we last confirmed on that asset (the recall watch retries until it reads the recall) */
+  passportAssetStatus?: string | null;
 }
 export interface SaleLabel { model: string | null; batch: string | null; date: string | null; upc: string | null }
 
@@ -106,7 +110,7 @@ export const pub = (d: DealRecord): PublicDeal => { const { _id, authId, label, 
 /** What the PUBLIC board and its change stream show for one deal: an explicit allowlist (never authId, never
  *  sweepAttemptAt, never a field added later by accident), and only listing text we wrote (catalog titles,
  *  demo-table items) verbatim; anything else a buyer typed becomes "A listing". */
-export type BoardDeal = Pick<PublicDeal, "dealId" | "listing" | "amountUsd" | "status" | "card" | "agent" | "createdAt" | "updatedAt" | "events" | "verdict" | "passportPath">;
+export type BoardDeal = Pick<PublicDeal, "dealId" | "listing" | "amountUsd" | "status" | "card" | "agent" | "createdAt" | "updatedAt" | "events" | "verdict" | "passportPath" | "passportAsset">;
 export function boardDeal(d: DealRecord): BoardDeal {
   const out: BoardDeal = {
     dealId: d._id, listing: KNOWN_TITLES.has(d.listing) ? d.listing : "A listing", amountUsd: d.amountUsd, status: d.status,
@@ -114,6 +118,8 @@ export function boardDeal(d: DealRecord): BoardDeal {
   };
   if (d.verdict !== undefined) out.verdict = d.verdict;
   if (d.passportPath !== undefined) out.passportPath = d.passportPath;
+  // a public Solana address (the asset's own account), never a key: safe for the public board
+  if (d.passportAsset !== undefined) out.passportAsset = d.passportAsset;
   return out;
 }
 
@@ -180,7 +186,7 @@ export function watchedSales(limit = 1000) {
     const c = await deals();
     if (!c) return null;
     return c.find({ status: "CAPTURED", $or: [{ "label.model": { $type: "string" } }, { "label.upc": { $type: "string" } }] },
-      { projection: { _id: 1, listing: 1, label: 1, postSaleRecall: 1, updatedAt: 1 }, sort: { updatedAt: -1 }, limit }).toArray();
+      { projection: { _id: 1, listing: 1, label: 1, postSaleRecall: 1, updatedAt: 1, passportAsset: 1, passportAssetStatus: 1 }, sort: { updatedAt: -1 }, limit }).toArray();
   }, 6000);
 }
 
@@ -194,5 +200,37 @@ export function flagPostSaleRecall(dealId: string, r: { recallNumber: string; ti
       { $set: { postSaleRecall: { ...r, at }, updatedAt: at },
         $push: { events: { at, status: "CAPTURED", note: `Recall announced after the sale: CPSC ${r.recallNumber}. Notified ${notified} watching browser${notified === 1 ? "" : "s"}.` } } });
     return res.modifiedCount === 1;
+  });
+}
+
+/** Records the sale's Core asset address once it is confirmed on devnet (waits briefly for the settlement write). */
+export function recordPassportAsset(dealId: string, address: string) {
+  return safely("recordPassportAsset", async () => {
+    const c = await deals();
+    if (!c) return false;
+    const update = () => {
+      const at = new Date().toISOString();
+      return c.updateOne({ _id: dealId, status: "CAPTURED" }, { $set: { passportAsset: address, passportAssetStatus: "CAPTURED", updatedAt: at },
+        $push: { events: { at, status: "CAPTURED", note: "Item passport minted as a Metaplex Core asset on Solana devnet" } } });
+    };
+    let r = await update();
+    for (let i = 0; i < 3 && r.matchedCount === 0; i++) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      r = await update();
+    }
+    if (r.matchedCount === 0) console.warn(`[deals] recordPassportAsset: no captured record for ${dealId}; asset ${address} is not linked`);
+    return r.matchedCount === 1;
+  }, 12_000);
+}
+
+/** Records the `status` attribute confirmed on the sale's Core asset. */
+export function recordPassportAssetStatus(dealId: string, status: string) {
+  return safely("recordPassportAssetStatus", async () => {
+    const c = await deals();
+    if (!c) return false;
+    const at = new Date().toISOString();
+    const r = await c.updateOne({ _id: dealId }, { $set: { passportAssetStatus: status, updatedAt: at },
+      $push: { events: { at, status: "CAPTURED", note: `Item passport asset on Solana devnet now reads status ${status}` } } });
+    return r.modifiedCount === 1;
   });
 }

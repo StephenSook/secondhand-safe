@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { flagPostSaleRecall, watchedSales } from "@/server/deals/store";
+import { flagPostSaleRecall, recordPassportAssetStatus, watchedSales } from "@/server/deals/store";
+import { updatePassportStatus } from "@/server/solana/core";
 import { recheckSales } from "@/server/watch/recheck";
 import { notify } from "@/server/watch/push";
 
@@ -31,5 +32,16 @@ export async function GET(request: Request) {
     const newly = delivered ? await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url }, push.sent) : false;
     out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered });
   }
-  return Response.json({ checked: sales.length, hits: out }, { headers: NO_STORE });
+  // the on-chain passport follows the flag: every flagged sale with a Core asset whose status we have not yet
+  // confirmed as RECALLED_AFTER_SALE (a newly flagged one, or one whose earlier update did not land)
+  const flagged = new Map<string, string>();
+  for (const s of sales) if (s.postSaleRecall?.recallNumber) flagged.set(s._id, s.postSaleRecall.recallNumber);
+  for (const o of out) if (o.flagged) flagged.set(o.dealId, o.recallNumber);
+  const pending = sales.filter((s) => s.passportAsset && s.passportAssetStatus !== "RECALLED_AFTER_SALE" && flagged.has(s._id));
+  const chain = await Promise.all(pending.map(async (s) => {
+    const r = await updatePassportStatus(s.passportAsset as string, "RECALLED_AFTER_SALE", { recall: flagged.get(s._id) as string });
+    if (r.ok) await recordPassportAssetStatus(s._id, "RECALLED_AFTER_SALE");
+    return { dealId: s._id, asset: s.passportAsset, updated: r.ok, ...(r.ok ? { signature: r.signature } : { reason: r.reason }) };
+  }));
+  return Response.json({ checked: sales.length, hits: out, passportAssets: chain }, { headers: NO_STORE });
 }

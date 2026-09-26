@@ -5,8 +5,12 @@ import { verifyDealToken } from "@/server/deals/token";
 import { settle } from "@/server/deals/settle";
 import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
-import { recordSettlement } from "@/server/deals/store";
+import { recordPassportAsset, recordSettlement } from "@/server/deals/store";
+import { createPassportAsset } from "@/server/solana/core";
 import { waitUntil } from "@vercel/functions";
+
+// the Core asset mint runs after the response (waitUntil) and is bounded by its own 40 s send deadline
+export const maxDuration = 60;
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 
@@ -43,8 +47,14 @@ export async function POST(request: Request) {
       visaCapture: out.visa?.id ?? null, at: new Date().toISOString(),
     });
     try {
-      const signature = await anchor(sol, passportMemo(deal.dealId, recordHash(record)));
+      const sha = recordHash(record);
+      const signature = await anchor(sol, passportMemo(deal.dealId, sha));
       passport = { signature, path: `/passport/${signature}?r=${Buffer.from(record).toString("base64url")}` };
+      // the on-chain asset: after the response, never on the Visa or Memo path; a failure only means no asset
+      const base = process.env.PUBLIC_BASE_URL?.trim() || new URL(request.url).origin;
+      waitUntil(createPassportAsset({ verdict: verdict.kind, recordSha256: sha, indexAsOf: verdict.asOf, dealId: deal.dealId, status: "CAPTURED" }, base)
+        .then((a) => (a.ok ? recordPassportAsset(deal.dealId, a.address) : null))
+        .catch((e) => console.warn("[core-passport] mint task failed:", (e as Error).message)));
     } catch (e) {
       passport = { error: `Passport not written: ${(e as Error).message}` };
     }
