@@ -11,7 +11,7 @@ import facts from "../../../docs/FACTS.json";
 export const metadata: Metadata = { title: `Judges: ${BRAND} in 3 minutes` };
 
 const LIVE_LABEL: Record<string, string> = {
-  visa: "Visa Acceptance sandbox (authorize, capture, reverse)",
+  visa: "Visa Acceptance sandbox (authorize, capture, reverse, Microform, Token Management Service)",
   mongo: "MongoDB Atlas",
   gemini: "Gemini label reader",
   elevenlabs: "ElevenLabs spoken verdict",
@@ -37,6 +37,9 @@ export default async function JudgePage() {
         ? "On /pickup, type Visa's sandbox test card (4111 1111 1111 1111, any CVV, a future expiry) into Visa's own Microform fields, pick a listing and press Agree: a real Visa Acceptance sandbox authorization is created with capture off (HELD). Type BHC001 / 202408 and the hold is REVERSED at Visa; type any model with no recall and it is CAPTURED. The Visa ids are on screen."
         : "On /pickup the scan decides CAPTURE or REVERSE. The Visa hold itself needs sandbox keys on this deployment (see the live list below); it is verified by tests/visa.live.test.ts.",
       link: "/pickup", cta: "Open pickup scan" },
+    { t: "Get the item's passport", d: "When a clean label captures the payment, a Solana devnet transaction stores the SHA-256 of the pickup record (no personal data on chain). The passport page reads it back and checks the signer, the transaction and the hash.", link: "/pickup", cta: "Capture a clean deal on /pickup" },
+    { t: "Pay again with a saved card", d: "Tick “Save this card with Visa” on the first hold. Next time, “Use my saved card” pays with Visa's Token Management Service; the card stays in Visa's vault. When Visa applies a card-linked offer, the hold is the discounted amount and the saving is shown.", link: "/pickup", cta: "Open pickup" },
+    { t: "The phone app", d: "The same product as an iOS and Android app (Expo): shop, scan a label with the camera, and the deal board, all on this deployment's API. Source in mobile/; run it with Expo Go.", link: "https://github.com/StephenSook/secondhand-safe/tree/main/mobile", cta: "See the app" },
     { t: "Watch it from the seller's side", d: "After you press Agree on /pickup, a QR code appears. Scan it with a second phone: the seller's live view (MongoDB Atlas) follows the same deal to CAPTURED or REVERSED, with the reason. Every deal is also on the board.", link: "/board", cta: "Open the deal board" },
     { t: "See the Atlanta scan", d: `Every one of the ${facts.scannedAtlanta} Craigslist Atlanta baby and kid listings we scanned, on a map, with what review found.`, link: "/map", cta: "Open the map" },
     { t: "Read the code", d: "Every number on this site is computed by a script in the repo. CI runs lint, types, tests, build, pytest, secret scan and an em-dash gate.", link: "https://github.com/StephenSook/secondhand-safe", cta: "GitHub" },
