@@ -44,6 +44,7 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
     onConnect: () => { connectedFor.current = attempt.current; setPhase("live"); },
     onDisconnect: () => setPhase((p) => (p === "error" ? p : "ended")),
     onError: (message: string) => {
+      attempt.current++; // the SDK's own error stands; the connect watchdog must not overwrite it
       setProblem(message || "The voice connection failed.");
       setPhase("error");
     },
@@ -66,7 +67,7 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
   });
 
   // leaving the page ends the call (the provider also ends it when it unmounts)
-  useEffect(() => () => endSession(), [endSession]);
+  useEffect(() => () => { attempt.current++; endSession(); }, [endSession]); // also cancels a start still waiting on the mic or the fetch
 
 
   async function start() {

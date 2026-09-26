@@ -5,9 +5,10 @@ import { underLimit } from "@/server/visa/microform";
 
 const NO_STORE = { "cache-control": "no-store" };
 /** Voice sessions per UTC day across every instance (each call is also capped at 180 s by the agent config). */
-const capEnv = Number(process.env.VOICE_DAILY_CAP);
-// an empty or mistyped setting falls back to 60 instead of silently blocking every session
-const DAILY_CAP = Number.isFinite(capEnv) && capEnv > 0 ? capEnv : 60;
+// "0" turns voice off; an empty or mistyped setting falls back to 60 instead of silently blocking every session
+const capRaw = process.env.VOICE_DAILY_CAP?.trim();
+const capNum = Number(capRaw);
+const DAILY_CAP = capRaw === "0" ? 0 : Number.isFinite(capNum) && capNum > 0 ? capNum : 60;
 
 /** Counts today's sessions in Atlas. true = under the cap; null = Atlas unavailable (the per-IP limit still holds). */
 async function underDailyCap(): Promise<boolean | null> {
