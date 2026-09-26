@@ -303,7 +303,13 @@ export function PickupScanner() {
       return;
     }
     const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
-      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string }; error?: string };
+      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string }; error?: string; settling?: boolean };
+    if (r.status === 409 && j.settling) {
+      // another scan (the table kiosk, another phone) is settling this hold right now; this request did not reach Visa
+      setBusy("");
+      setDealErr("This hold is already being settled by another scan. Nothing was sent from here; scan again in a moment to see its result.");
+      return;
+    }
     if (!r.ok || !j.verdict) {
       setBusy("");
       // 400 (our validation), 403 (bad token) and 503 (no Visa keys) are answered before Visa is called
