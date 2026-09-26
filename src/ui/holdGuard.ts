@@ -11,9 +11,9 @@ export const PENDING_KEY = "shs-pending";
 
 export type Held = { id: string; handoff: boolean; text: string; pending?: boolean; at?: string };
 type Stored = { dealId?: string; listing?: string; listingId?: string; amountUsd?: number; status?: string; at?: string };
-/** A stored hold older than the pickup token's life (12 h) can no longer be settled from this browser, and the
- *  daily sweeper releases it at Visa, so it stops blocking new holds. */
-const STALE_MS = 12 * 60 * 60 * 1000;
+/** A hold keeps blocking until the sweeper has certainly released it at Visa: the sweep window is 24 h and the
+ *  sweep runs daily, so 48 h. (The 12 h pickup token only stops it being settled here; it does not release it.) */
+const STALE_MS = 48 * 60 * 60 * 1000;
 export const stale = (at?: string) => { const t = Date.parse(at ?? ""); return Number.isFinite(t) && Date.now() - t > STALE_MS; };
 
 const read = (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } };

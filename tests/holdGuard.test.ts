@@ -41,8 +41,10 @@ describe("only an explicit 'no hold placed' clears the pending marker", () => {
 });
 
 describe("the guard never blocks forever and never invents a purchase", () => {
-  it("a stored hold or pending marker older than the pickup token's life (12 h) stops blocking", () => {
-    const old = new Date(Date.now() - 13 * 3_600_000).toISOString();
+  it("a hold keeps blocking past 12 h (Visa may still hold it) and stops only after the sweeper's 48 h release window", () => {
+    const mid = new Date(Date.now() - 13 * 3_600_000).toISOString();
+    expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: mid })}\n`)).not.toBeNull();
+    const old = new Date(Date.now() - 49 * 3_600_000).toISOString();
     const fresh = new Date().toISOString();
     expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: old })}\n`)).toBeNull();
     expect(openHold(`\n${JSON.stringify({ listingId: "x", at: old })}`)).toBeNull();
@@ -52,7 +54,7 @@ describe("the guard never blocks forever and never invents a purchase", () => {
 
 describe("an unconfirmed settlement never ages out on its own", () => {
   it("an UNKNOWN deal keeps blocking after 12 h (money may have moved); a stale HELD does not", () => {
-    const old = new Date(Date.now() - 20 * 3_600_000).toISOString();
+    const old = new Date(Date.now() - 60 * 3_600_000).toISOString();
     expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "UNKNOWN", at: old })}\n`)).not.toBeNull();
     expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: old })}\n`)).toBeNull();
   });
