@@ -10,7 +10,11 @@ export const DEAL_KEY = "shs-deal";
 export const PENDING_KEY = "shs-pending";
 
 export type Held = { id: string; handoff: boolean; text: string; pending?: boolean };
-type Stored = { dealId?: string; listing?: string; listingId?: string; amountUsd?: number; status?: string };
+type Stored = { dealId?: string; listing?: string; listingId?: string; amountUsd?: number; status?: string; at?: string };
+/** A stored hold older than the pickup token's life (12 h) can no longer be settled from this browser, and the
+ *  daily sweeper releases it at Visa, so it stops blocking new holds. */
+const STALE_MS = 12 * 60 * 60 * 1000;
+const stale = (at?: string) => { const t = Date.parse(at ?? ""); return Number.isFinite(t) && Date.now() - t > STALE_MS; };
 
 const read = (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } };
 const parse = (raw: string) => { try { return JSON.parse(raw || "null") as Stored | null; } catch { return null; } };
@@ -23,12 +27,12 @@ export const noSubscribe = () => () => {};
 export function openHold(raw: string = readBoth()): Held | null {
   const [dealRaw, pendingRaw] = raw.split("\n");
   const d = parse(dealRaw);
-  if (d?.dealId && (d.status === "HELD" || d.status === "UNKNOWN")) {
+  if (d?.dealId && (d.status === "HELD" || d.status === "UNKNOWN") && !stale(d.at)) {
     return { id: d.listingId ?? "", handoff: true,
       text: `You already have an open hold: $${(d.amountUsd ?? 0).toFixed(2)} for ${d.listing ?? "a listing"}. Finish it at pickup before holding another.` };
   }
   const p = parse(pendingRaw);
-  if (p?.listingId) {
+  if (p?.listingId && !stale(p.at)) {
     return { id: p.listingId, handoff: false, pending: true,
       text: `Visa did not confirm the hold for ${p.listing ?? "a listing"} ($${(p.amountUsd ?? 0).toFixed(2)}), so one MAY exist. It lapses on its own if nobody captures it. No second hold until you clear this.` };
   }
@@ -38,7 +42,7 @@ export function openHold(raw: string = readBoth()): Held | null {
 /** Writes the pending marker; false when the browser refuses storage (the caller must then not call checkout). */
 export function markPending(p: { listingId: string; listing: string; amountUsd: number }): boolean {
   try {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ listingId: p.listingId, listing: p.listing.slice(0, 80), amountUsd: p.amountUsd }));
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ listingId: p.listingId, listing: p.listing.slice(0, 80), amountUsd: p.amountUsd, at: new Date().toISOString() }));
     return true;
   } catch {
     return false;

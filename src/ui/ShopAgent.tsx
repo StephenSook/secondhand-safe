@@ -170,7 +170,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
       } catch {
         handoff = false; // private mode or storage blocked: the pickup page could not find this hold
       }
-      clearPending();
+      if (handoff) clearPending(); // the pending marker stays the blocker if the confirmed deal could not be stored
       setHeld({ id: l.id, handoff, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
     } catch (e) {
       if (clearNo) {

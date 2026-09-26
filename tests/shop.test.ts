@@ -66,6 +66,12 @@ describe("shopping agent catalog (real scanned listings)", () => {
     expect(r.status).toBe(403);
     expect((await r.json()).error).toMatch(/will not buy/);
     const unknown = await agentCheckout(new Request("http://x/api/agent/checkout", { method: "POST", body: JSON.stringify({ listingId: "nope" }) }));
+    // an empty or malformed body never falls through to a default item (it used to hold the first demo item)
+    for (const body of ["{}", "not json", JSON.stringify({ listing: "Harppa high chair" })]) {
+      const r0 = await agentCheckout(new Request("http://x/api/agent/checkout", { method: "POST", headers: { "x-forwarded-for": "198.51.100.77" }, body }));
+      expect(r0.status).toBe(400);
+      expect(await r0.json()).toMatchObject({ placed: false });
+    }
     expect(unknown.status).toBe(404);
   });
 

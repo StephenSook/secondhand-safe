@@ -39,3 +39,13 @@ describe("only an explicit 'no hold placed' clears the pending marker", () => {
     expect(explicitlyNoHold(null)).toBe(false);
   });
 });
+
+describe("the guard never blocks forever and never invents a purchase", () => {
+  it("a stored hold or pending marker older than the pickup token's life (12 h) stops blocking", () => {
+    const old = new Date(Date.now() - 13 * 3_600_000).toISOString();
+    const fresh = new Date().toISOString();
+    expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: old })}\n`)).toBeNull();
+    expect(openHold(`\n${JSON.stringify({ listingId: "x", at: old })}`)).toBeNull();
+    expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: fresh })}\n`)).not.toBeNull();
+  });
+});
