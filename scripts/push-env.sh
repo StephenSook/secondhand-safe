@@ -14,7 +14,8 @@ fi
 
 # NAME=keychain-service (empty service = .env.local only)
 pairs=(
-  "GEMINI_API_KEY=gemini-api-key"
+  # GEMINI_API_KEY is not pushed from here: production uses keyless Workload Identity Federation (a "wif:..."
+  # config string set once by hand); the keychain key bills a depleted prepay account.
   "ELEVENLABS_API_KEY=elevenlabs-api-key"
   "MONGODB_URI="
   "VISA_MERCHANT_ID="
@@ -27,7 +28,8 @@ pairs=(
 
 from_env_file() {
   [ -f .env.local ] || return 0
-  grep -E "^$1=" .env.local | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'
+  # a name missing from .env.local is normal: never let grep's exit 1 end the script under pipefail
+  { grep -E "^$1=" .env.local || true; } | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'
 }
 
 for pair in "${pairs[@]}"; do
