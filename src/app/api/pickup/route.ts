@@ -8,6 +8,7 @@ import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
 import { getDeal, recordSettlement } from "@/server/deals/store";
 import { waitUntil } from "@vercel/functions";
+import { callAfterReversal } from "@/server/call/pickup";
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 const FINAL = new Set(["CAPTURED", "REVERSED", "RELEASED", "LAPSED", "REFUSED"]);
@@ -73,6 +74,9 @@ export async function POST(request: Request) {
       verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
       passportPath: passport && "path" in passport ? passport.path : null,
       label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } }));
+    // the recall call (opt-in): background only, after the settlement is recorded; it never delays this answer.
+    // Inside the settlement claim, so a replayed or concurrent scan of the same deal never places a second call.
+    if (out.status === "REVERSED") waitUntil(callAfterReversal(deal.dealId, verdict).catch(() => {}));
     return {
       dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
       visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },

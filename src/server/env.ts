@@ -15,6 +15,9 @@ export const INTEGRATIONS = {
   elevenlabs: ["ELEVENLABS_API_KEY"],
   tap: ["TAP_AGENT_PRIVATE_KEY_HEX", "TAP_AGENT_KEY_ID"],
   solana: ["SOLANA_SECRET_KEY_B58"],
+  // the recall call (PLAN 6.12): a separate Vonage application, its caller id, the number-sealing secret, the URL
+  // Vonage fetches audio from, and Atlas for the claims and caps (src/server/call/)
+  recallCall: ["RECALL_CALL_VONAGE_APPLICATION_ID", "RECALL_CALL_VONAGE_PRIVATE_KEY", "RECALL_CALL_FROM_NUMBER", "RECALL_CALL_SECRET", "PUBLIC_BASE_URL", "MONGODB_URI"],
 } as const;
 
 export type Integration = keyof typeof INTEGRATIONS;

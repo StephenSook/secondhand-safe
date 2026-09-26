@@ -12,6 +12,7 @@ import type { LookAlike } from "@/server/db/vector";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
 import { WatchThisItem } from "./WatchThisItem";
+import { RecallCallOptIn } from "./RecallCallOptIn";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 
 type Health = { integrations: Record<string, boolean> };
@@ -464,6 +465,7 @@ export function PickupScanner() {
                 {deal.passportError && <><dt>passport</dt><dd>{deal.passportError}</dd></>}
               </dl>
               {deal.status === "CAPTURED" && deal.token && <WatchThisItem token={deal.token} />}
+              {health?.integrations?.recallCall && deal.token && <RecallCallOptIn token={deal.token} status={deal.status} />}
               {health?.integrations?.mongo && (
                 <div className="mt-4 flex items-center gap-3 rounded-2xl border-2 border-ink bg-paper text-ink p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
