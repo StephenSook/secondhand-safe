@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "public/models/**",
     "public/vendor/**",
     "mobile/**",
+    // local agent worktrees (gitignored; each is a full copy of the repo with its own .next)
+    ".claude/**",
   ]),
 ]);
 
