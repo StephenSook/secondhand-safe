@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { allowedOrigin, captureContext, isTransientToken } from "@/server/visa/microform";
+import { allowedOrigin, captureContext, isTransientToken, underLimit } from "@/server/visa/microform";
 
 const creds = { merchantId: "m", keyId: "k", secret: Buffer.from("s").toString("base64"), host: "apitest.cybersource.com" };
 
@@ -12,6 +12,15 @@ describe("Microform capture context (PLAN 3.9)", () => {
     expect(allowedOrigin("http://secondhand-safe-web.vercel.app")).toBeNull();
     expect(allowedOrigin("https://secondhand-safe-web.vercel.app.evil.example")).toBeNull();
     expect(allowedOrigin(null)).toBeNull();
+    expect(allowedOrigin("http://localhost:3107", false)).toBeNull(); // production deployment
+    expect(allowedOrigin("https://lullabuy.tech", false)).toBe("https://lullabuy.tech");
+  });
+  it("limits capture contexts per client", () => {
+    const t = 1_000_000;
+    for (let i = 0; i < 12; i++) expect(underLimit("ip-a", 12, 60_000, t + i)).toBe(true);
+    expect(underLimit("ip-a", 12, 60_000, t + 20)).toBe(false);
+    expect(underLimit("ip-b", 12, 60_000, t + 20)).toBe(true);
+    expect(underLimit("ip-a", 12, 60_000, t + 61_000)).toBe(true);
   });
   it("signs a POST to /microform/v2/sessions naming the origin, and returns the JWT", async () => {
     let seen: { url: string; body: string; sig: string } | undefined;

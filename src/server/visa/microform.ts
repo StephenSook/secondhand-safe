@@ -8,11 +8,26 @@ import { signedHeaders, type VisaCreds } from "./acceptance";
 const PROD_ORIGINS = ["https://secondhand-safe-web.vercel.app", "https://lullabuy.tech", "https://www.lullabuy.tech"];
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/;
 
-/** Only our own origins get a capture context: Visa refuses to render the fields on any other page. */
-export function allowedOrigin(origin: string | null | undefined): string | null {
+/** Only our own origins get a capture context: Visa refuses to render the fields on any other page.
+ *  localhost is accepted only off the production deployment. Origin is a client header, so this limits whose
+ *  pages can host the fields, not who can call the route: the per-IP limit below covers that. */
+export function allowedOrigin(origin: string | null | undefined, allowLocal = process.env.VERCEL_ENV !== "production"): string | null {
   if (!origin) return null;
   const o = origin.trim().replace(/\/$/, "");
-  return PROD_ORIGINS.includes(o) || LOCAL.test(o) ? o : null;
+  return PROD_ORIGINS.includes(o) || (allowLocal && LOCAL.test(o)) ? o : null;
+}
+
+/** Fixed-window limit per client per server instance: each call is a signed request under our merchant id. */
+const hits = new Map<string, { n: number; t: number }>();
+export function underLimit(key: string, max = 12, windowMs = 60_000, now = Date.now()): boolean {
+  const h = hits.get(key);
+  if (!h || now - h.t > windowMs) {
+    if (hits.size > 5000) hits.clear();
+    hits.set(key, { n: 1, t: now });
+    return true;
+  }
+  h.n += 1;
+  return h.n <= max;
 }
 
 export type ContextResult = { ok: true; jwt: string } | { ok: false; httpStatus: number; reason: string };

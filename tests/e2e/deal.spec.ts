@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { fillCard } from "./card";
 
 /**
  * The money loop in a browser, against the real Visa Acceptance sandbox. Runs only where the deployment has
@@ -18,6 +19,7 @@ test.describe("Visa hold settles on the pickup check", () => {
       await page.goto("/pickup");
       await page.evaluate(() => sessionStorage.removeItem("shs-deal"));
       await page.reload();
+      await fillCard(page);
       await page.locator('input[name="listing"]').nth(c.pick).check();
       await page.getByRole("button", { name: /Agree and hold the payment/ }).click();
       await expect(page.getByText("HELD", { exact: true })).toBeVisible({ timeout: 30_000 });

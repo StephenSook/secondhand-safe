@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CardFields, type Tokenize } from "./CardFields";
+import { CardFields, type CardState } from "./CardFields";
 import type { Verdict } from "@/core/verdict";
 import { VERDICT_LABEL, CAPTURABLE } from "@/core/verdict";
 import type { ClipHead, ClassifyResult } from "@/core/clipHead";
@@ -14,6 +14,8 @@ type Health = { integrations: Record<string, boolean> };
 type Deal = {
   dealId: string; listing: string; amountUsd: number; token: string; authId: string;
   status: "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN"; settlementId?: string; reason?: string; at: string;
+  /** which card Visa held: the parent's Microform entry, or the sandbox test card (agent path, or no fields) */
+  card?: "microform" | "sandbox-test-card";
 };
 const DEAL_KEY = "shs-deal";
 const LISTINGS = [
@@ -60,7 +62,7 @@ export function PickupScanner() {
   const [deal, setDeal] = useState<Deal | null>(null);
   const [dealErr, setDealErr] = useState("");
   const [pick, setPick] = useState(0);
-  const [tokenize, setTokenize] = useState<Tokenize | null>(null);
+  const [card, setCard] = useState<CardState>({ state: "loading" });
   const decisionRef = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const dealRef = useRef<Deal | null>(null);
@@ -94,7 +96,7 @@ export function PickupScanner() {
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       const m = j.merchant;
       if (m.status === "HELD" && m.token) {
-        saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at });
+        saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at, card: m.card });
         setVerdict(null);
         setAgentMsg({ ok: true, text: `The merchant checked the signature: this came from our registered agent (key ${m.tap?.keyid}) and was not altered on the way. Then Visa held the payment.`, sig: j.agent["signature-input"] });
       } else {
@@ -109,15 +111,16 @@ export function PickupScanner() {
 
   async function startDeal() {
     setDealErr("");
-    setBusy(tokenize ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
+    if (card.state === "loading") return setDealErr("Visa's card fields are still loading.");
+    setBusy(card.state === "ready" ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
     try {
-      const transientTokenJwt = tokenize ? await tokenize() : undefined;
+      const transientTokenJwt = card.state === "ready" ? await card.tokenize() : undefined;
       setBusy("Asking Visa to authorize and hold…");
       const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd, transientTokenJwt }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at });
+      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card });
       setVerdict(null);
     } catch (e) {
       setDealErr((e as Error).message);
@@ -299,9 +302,9 @@ export function PickupScanner() {
                   </label>
                 ))}
               </div>
-              <CardFields onReady={(t) => setTokenize(() => t)} />
+              <CardFields onState={setCard} />
               <div className="mt-4 flex flex-wrap gap-3">
-                <SquashButton onClick={startDeal} disabled={!!busy} accent="var(--amber)">Agree and hold the payment</SquashButton>
+                <SquashButton onClick={startDeal} disabled={!!busy || card.state === "loading"} accent="var(--amber)">Agree and hold the payment</SquashButton>
                 <SquashButton onClick={() => agentBuy(false)} disabled={!!busy} bg="var(--visa)" accent="var(--aqua)">Let our agent buy it</SquashButton>
               </div>
               <button type="button" onClick={() => agentBuy(true)} disabled={!!busy} className="mt-3 text-sm font-bold underline decoration-2 underline-offset-4">
@@ -317,6 +320,7 @@ export function PickupScanner() {
               <p className="mt-1 font-semibold opacity-80">{deal.listing}</p>
               <dl className="mt-3 text-xs font-mono grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 opacity-90">
                 <dt>authorization</dt><dd className="break-all">{deal.authId}</dd>
+                {deal.card && <><dt>card</dt><dd>{deal.card === "microform" ? "entered in Visa Microform (tokenized)" : "Visa sandbox test card"}</dd></>}
                 {deal.settlementId && (deal.status === "CAPTURED" || deal.status === "REVERSED") && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
                 <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
               </dl>
