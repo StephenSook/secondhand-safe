@@ -8,8 +8,7 @@ import { underLimit } from "@/server/visa/microform";
  */
 const LISTING_ID = /^[a-z]+:[A-Za-z0-9._-]{1,80}$/;
 
-async function answer(input: { embedding?: unknown; listingId?: unknown }, ip: string) {
-  if (!underLimit(`lookalike:${ip}`, 60)) return Response.json({ error: "Too many look-ups; wait a minute." }, { status: 429 });
+async function answer(input: { embedding?: unknown; listingId?: unknown }) {
   let r;
   if (input.embedding !== undefined) {
     const v = parseVector(input.embedding);
@@ -34,13 +33,18 @@ async function answer(input: { embedding?: unknown; listingId?: unknown }, ip: s
 
 const ipOf = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 
+const limited = () => Response.json({ error: "Too many look-ups; wait a minute." }, { status: 429 });
+
+// Every request counts against the limit, malformed ones included (per server instance: a speed bump, not a quota).
 export async function POST(request: Request) {
+  if (!underLimit(`lookalike:${ipOf(request)}`, 60)) return limited();
   const b = (await request.json().catch(() => null)) as { embedding?: unknown; listingId?: unknown } | null;
   if (!b || typeof b !== "object") return Response.json({ error: "JSON body required" }, { status: 400 });
-  return answer(b, ipOf(request));
+  return answer(b);
 }
 
 export async function GET(request: Request) {
+  if (!underLimit(`lookalike:${ipOf(request)}`, 60)) return limited();
   const listingId = new URL(request.url).searchParams.get("listingId") ?? undefined;
-  return answer({ listingId }, ipOf(request));
+  return answer({ listingId });
 }

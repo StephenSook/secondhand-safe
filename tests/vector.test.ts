@@ -41,6 +41,12 @@ describe("the look-alike endpoint", () => {
     expect((await post({})).status).toBe(400);
     expect((await GET(new Request("http://x/api/lookalike?listingId=%3Cscript%3E"))).status).toBe(400);
   });
+  it("counts malformed requests against the rate limit too", async () => {
+    const ip = `192.0.2.${Math.floor(Math.random() * 200)}`;
+    const bad = () => POST(new Request("http://x/api/lookalike", { method: "POST", headers: { "x-forwarded-for": ip }, body: "not json" }));
+    for (let i = 0; i < 60; i++) expect((await bad()).status).toBe(400);
+    expect((await bad()).status).toBe(429);
+  });
   it("answers 503, not a fake match, when Atlas is not configured", async () => {
     vi.stubEnv("MONGODB_URI", "");
     expect(await lookalikesByVector(vec())).toEqual({ ok: false, reason: "unconfigured" });

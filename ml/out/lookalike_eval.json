@@ -1,14 +1,14 @@
 {
   "what": "Held-out retrieval: a recall's SECOND CPSC photo, searched against an index holding only each recall's first photo",
   "index": "MongoDB Atlas Vector Search img_vec (cosine, 512-d CLIP ViT-B/32 transformers.js q8)",
-  "sampleSeed": 20260926,
+  "sample": "ml/sample_second_photos.py (seed 20260926)",
   "sampled": 150,
   "evaluated": 144,
   "hit1": 60,
   "hit3": 68,
   "hit1Rate": 0.417,
   "hit3Rate": 0.472,
-  "asOf": "2026-09-26T18:30:33.240Z",
+  "asOf": "2026-09-26T18:47:31.747Z",
   "detail": [
     {
       "recall": "26181",
