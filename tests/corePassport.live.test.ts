@@ -41,11 +41,12 @@ it.skipIf(!chainOn)("mints a clearly labelled test passport on devnet, reads it,
 }, 120_000);
 
 /** Real Atlas, throwaway database, no chain: concurrent claims for one deal, exactly one wins; the cap counter is atomic. */
-it.skipIf(!process.env.MONGODB_URI)("Atlas: 10 concurrent claims for one deal, exactly one wins; 10 concurrent counts give 1..10", async () => {
+it.skipIf(!process.env.MONGODB_URI)("Atlas: claims, retakes and the send lease each have exactly one winner; counts are atomic", async () => {
   process.env.MONGODB_DB = `lullabuy_test_${Date.now()}`;
   const store = atlasMintStore();
-  const at = new Date().toISOString();
+  const at = new Date(Date.now() - 3_600_000).toISOString();
   const claim = (i: number): MintClaim => ({ _id: "shs-00000000-c1a1", address: `Addr${i}`, state: "pending", linked: false, baseUrl: "https://example.test",
+    attempts: 1, attemptAt: at, nextAttemptAt: at, linkAttempts: 0,
     fields: { verdict: "LIVE_TEST", recordSha256: "0".repeat(64), indexAsOf: "x", dealId: "shs-00000000-c1a1", status: "CAPTURED" }, createdAt: at, updatedAt: at });
   try {
     const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => store.claim(claim(i))));
@@ -54,7 +55,24 @@ it.skipIf(!process.env.MONGODB_URI)("Atlas: 10 concurrent claims for one deal, e
     expect(rs.filter((r) => r === "lost")).toHaveLength(9);
     const counts = await Promise.all(Array.from({ length: 10 }, () => store.countMint("2099-01-01")));
     expect([...counts].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(await store.open(25)).toHaveLength(1);
+    expect(await store.open(25, new Date().toISOString())).toHaveLength(1);
+    const winner = rs.indexOf("won");
+    const retakes = await Promise.all(Array.from({ length: 10 }, (_, i) =>
+      store.retake("shs-00000000-c1a1", { state: "pending", attempts: 1, address: `Addr${winner}` }, { attempts: 2, address: `Retry${i}` })));
+    console.log("[live] retakes:", JSON.stringify(retakes));
+    expect(retakes.filter((r) => r === true)).toHaveLength(1);
+    const now = Date.now();
+    const leases = await Promise.all(Array.from({ length: 10 }, (_, i) => store.acquireLease(`h${i}`, now, 60_000)));
+    console.log("[live] leases:", JSON.stringify(leases));
+    expect(leases.filter((r) => r === true)).toHaveLength(1);
+    expect(leases.filter((r) => r === false)).toHaveLength(9);
+    const holder = `h${leases.indexOf(true)}`;
+    expect(await store.acquireLease("other", now + 1_000, 60_000)).toBe(false); // held, not expired
+    expect(await store.acquireLease("other", now + 61_000, 60_000)).toBe(true); // expired: taken over
+    await store.releaseLease(holder); // a stale holder's release does not free the new holder's lease
+    expect(await store.acquireLease("third", now + 62_000, 60_000)).toBe(false);
+    await store.releaseLease("other");
+    expect(await store.acquireLease("third", now + 62_000, 60_000)).toBe(true);
   } finally {
     await (await getDb())?.dropDatabase();
   }

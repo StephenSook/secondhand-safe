@@ -78,11 +78,12 @@ export const deadline = <T>(p: Promise<T>, ms: number, what: string) => {
 };
 
 /** Refuses (returns a reason) when the payer holds less than MIN_BALANCE_LAMPORTS or the balance cannot be read. */
-export async function balanceRefusal(umi: Umi): Promise<string | null> {
+export async function balanceRefusal(umi: Umi, reserve = 0n): Promise<string | null> {
   try {
     const bal = await deadline(umi.rpc.getBalance(umi.identity.publicKey), 8_000, "getBalance");
-    if (bal.basisPoints < MIN_BALANCE_LAMPORTS) {
-      return `passport wallet holds ${Number(bal.basisPoints) / 1e9} SOL, below the 0.02 SOL floor`;
+    // `reserve` is what the next transaction may spend, so the wallet stays at or above the floor AFTER it
+    if (bal.basisPoints < MIN_BALANCE_LAMPORTS + reserve) {
+      return `passport wallet holds ${Number(bal.basisPoints) / 1e9} SOL, below the 0.02 SOL floor${reserve ? ` plus ${Number(reserve) / 1e9} SOL for this mint` : ""}`;
     }
     return null;
   } catch (e) {
