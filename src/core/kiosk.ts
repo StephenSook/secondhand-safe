@@ -7,7 +7,8 @@ import type { VerdictKind } from "./verdict";
  */
 
 export type DealStatus = "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN" | "RELEASED" | "LAPSED";
-export type KioskState = "IDLE" | "HELD" | "NEEDS_CHECK" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN" | "CLOSED";
+/** SETTLING: another device holds the one-settlement claim for this deal right now (409); nothing sent from here. */
+export type KioskState = "IDLE" | "HELD" | "NEEDS_CHECK" | "SETTLING" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN" | "CLOSED";
 
 export interface TokenView { token: string; dealId: string; amountUsd: number; issuedAt: number }
 

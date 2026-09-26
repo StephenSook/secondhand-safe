@@ -88,6 +88,9 @@ export function PickupScanner() {
   const forgetSaved = () => { try { localStorage.removeItem(SAVED_KEY); } catch {} setSaved(null); };
   const decisionRef = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
+  const reqSeq = useRef(0); // each check's answer belongs to that check only
+  // 409: another device is settling this hold; shown as its own state until a replay gives the result
+  const [elsewhere, setElsewhere] = useState(false);
   const dealRef = useRef<Deal | null>(null);
   dealRef.current = deal;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -287,6 +290,11 @@ export function PickupScanner() {
   async function runCheck(f: typeof fields, c: ClassifyResult | null) {
     const deal = dealRef.current;
     const settling = deal?.status === "HELD";
+    const req = ++reqSeq.current;
+    // a new check invalidates the last answer on screen: nothing old is shown beside new fields
+    setVerdict(null);
+    setDealErr("");
+    setElsewhere(false);
     setBusy(settling ? "Checking recalls and settling the hold with Visa…" : "Checking recalls…");
     const payload = { ...f, cls: c ? { cls: c.cls, p: c.p } : undefined };
     let r: Response;
@@ -303,11 +311,19 @@ export function PickupScanner() {
       return;
     }
     const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
-      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string }; error?: string; settling?: boolean };
+      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string }; error?: string;
+        settling?: boolean; visaCalled?: boolean };
+    if (req !== reqSeq.current) return;
     if (r.status === 409 && j.settling) {
       // another scan (the table kiosk, another phone) is settling this hold right now; this request did not reach Visa
       setBusy("");
-      setDealErr("This hold is already being settled by another scan. Nothing was sent from here; scan again in a moment to see its result.");
+      setElsewhere(true);
+      return;
+    }
+    if (r.status === 503 && j.visaCalled === false) {
+      // the one-settlement claim could not be taken, so the server did not call Visa: nothing moved, trying again is safe
+      setBusy("");
+      setDealErr(j.error ?? "Could not start the settlement. Nothing moved; try again.");
       return;
     }
     if (!r.ok || !j.verdict) {
@@ -450,6 +466,13 @@ export function PickupScanner() {
               )}
               {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}){deal.reason === "MISSING_AUTH" ? ": this hold was already settled or is not open" : ""}. Visa did not apply it.</p>}
               {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
+              {deal.status === "HELD" && elsewhere && (
+                <div role="status" className="mt-3 rounded-xl border-2 border-ink bg-paper text-ink p-3">
+                  <p className="font-extrabold">Being settled on another device</p>
+                  <p className="text-sm font-semibold">Another scan of this deal (the table kiosk or another phone) is settling it with Visa right now. Nothing was sent from here.</p>
+                  <button type="button" onClick={() => check()} disabled={!!busy} className="mt-2 underline font-bold">Get its result (no second Visa call)</button>
+                </div>
+              )}
               {deal.status === "HELD"
                 ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.
                     <a href="/checkpoint" className="block mt-1 underline font-bold">Or settle it at the table kiosk with a barcode scanner</a></p>

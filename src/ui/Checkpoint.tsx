@@ -51,6 +51,7 @@ const Icon = ({ children }: { children: ReactNode }) => (
 const UI: Record<KioskState, { word: string; line: string; tone: string; icon: ReactNode }> = {
   IDLE: { word: "NO DEAL", line: "Attach the buyer's deal to start.", tone: "bg-paper text-ink", icon: <Icon><path d="M17 24h14" /></Icon> },
   HELD: { word: "HELD", line: "The money is held at Visa. Scan the item's barcode.", tone: "bg-amber text-ink", icon: <Icon><path d="M24 13v11l7 5" /></Icon> },
+  SETTLING: { word: "SETTLING", line: "Being settled on another device right now. Nothing was sent from here; the result appears when it lands.", tone: "bg-amber-soft text-ink", icon: <Icon><path d="M16 24h.5M24 24h.5M32 24h.5" /></Icon> },
   NEEDS_CHECK: { word: "NEEDS CHECK", line: "Hold kept. No money moved. A person checks the label.", tone: "bg-aqua text-ink", icon: <Icon><path d="M19 19a5 5 0 1 1 7 4.6c-1.3.6-2 1.6-2 3v1" /><path d="M24 34v.5" /></Icon> },
   CAPTURED: { word: "CAPTURED", line: "Paid to the seller.", tone: "bg-green text-paper", icon: <Icon><path d="M15 25l6 6 12-13" /></Icon> },
   REVERSED: { word: "REVERSED", line: "Hold reversed: the buyer keeps the money.", tone: "bg-red text-paper", icon: <Icon><path d="M17 17l14 14M31 17L17 31" /></Icon> },
@@ -66,7 +67,7 @@ function tone(state: KioskState) {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     audioCtx ??= new Ctx();
-    const notes: Record<KioskState, number[]> = { IDLE: [], HELD: [523], NEEDS_CHECK: [523, 523], CAPTURED: [659, 880], REVERSED: [440, 294],
+    const notes: Record<KioskState, number[]> = { IDLE: [], HELD: [523], NEEDS_CHECK: [523, 523], SETTLING: [440], CAPTURED: [659, 880], REVERSED: [440, 294],
       REFUSED: [330, 330, 330], UNKNOWN: [330, 330, 330], CLOSED: [392] };
     notes[state].forEach((f, i) => {
       const o = audioCtx!.createOscillator();
@@ -153,6 +154,8 @@ export function Checkpoint() {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
+  // 409 from the server: another device holds this deal's settlement claim; cleared by the next answer or record
+  const [elsewhere, setElsewhere] = useState(false);
   const [sound, setSound] = useState(true);
   const inFlight = useRef(false);
   const reqSeq = useRef(0);
@@ -171,7 +174,7 @@ export function Checkpoint() {
     if (cur && cur.status === "HELD") commit({ ...cur, ...patch });
   }, [commit]);
 
-  const resetDealView = () => { setScan(null); setRecord(null); lastRecord.current = null; setErr(""); setNote(""); };
+  const resetDealView = () => { setScan(null); setRecord(null); lastRecord.current = null; setErr(""); setNote(""); setElsewhere(false); };
 
   function attachFromTab(s: Stored) {
     const view = s.token ? readDealToken(s.token) : null;
@@ -214,7 +217,7 @@ export function Checkpoint() {
     const cur = localRef.current;
     if (!cur || !recordApplies(r.dealId, cur.dealId, r)) return;
     const next = mergeRecord(cur.status, r.status);
-    if (next !== cur.status) commit({ ...cur, status: next, unconfirmed: false, passportPath: r.passportPath ?? cur.passportPath }); // settled elsewhere
+    if (next !== cur.status) { setElsewhere(false); commit({ ...cur, status: next, unconfirmed: false, passportPath: r.passportPath ?? cur.passportPath }); } // settled elsewhere
     else if (cur.unconfirmed && cur.status === "HELD") commit({ ...cur, unconfirmed: false });
   }, [commit]);
 
@@ -237,7 +240,7 @@ export function Checkpoint() {
     const id = ++reqSeq.current;
     const dealId = cur.dealId;
     setScan({ id, upc, source, strayIgnored });
-    setErr(""); setNote("");
+    setErr(""); setNote(""); setElsewhere(false);
     setBusy("Checking recalls and settling the hold with Visa…");
     // every answer below belongs to this request and this deal; anything else changed meanwhile is left alone
     const current = () => reqSeq.current === id && localRef.current?.dealId === dealId;
@@ -254,11 +257,16 @@ export function Checkpoint() {
       }
       const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
         { dealId?: string; verdict?: Verdict; status?: DealStatus; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string };
-          error?: string; settling?: boolean; replayed?: boolean };
+          error?: string; settling?: boolean; replayed?: boolean; visaCalled?: boolean };
       if (!current()) return;
       if (r.status === 409 && j.settling) {
         // another device is settling this hold right now; this request did not reach Visa. The record feed shows the result.
-        setNote("This hold is already being settled by another scan. Nothing was sent from here; its result appears here when it lands.");
+        setElsewhere(true);
+        return;
+      }
+      if (r.status === 503 && j.visaCalled === false) {
+        // the one-settlement claim could not be taken, so Visa was not called: nothing moved, scanning again is safe
+        setErr(j.error ?? "Could not start the settlement. Nothing moved; scan again.");
         return;
       }
       if (!r.ok || !j.verdict || (j.dealId && j.dealId !== dealId)) {
@@ -301,8 +309,9 @@ export function Checkpoint() {
 
   const rec = record && local && record.dealId === local.dealId ? record : null;
   const verdict = scan?.verdict ?? null;
-  const state = kioskState(local?.status ?? null,
+  const base = kioskState(local?.status ?? null,
     local?.status === "HELD" ? (verdict?.kind ?? rec?.r?.verdict?.kind ?? null) : verdict?.kind ?? null);
+  const state: KioskState = elsewhere && local?.status === "HELD" ? "SETTLING" : base;
   const spokenKind = verdict?.kind ?? rec?.r?.verdict?.kind;
 
   // one sound per state change (never on first paint, never blocking the settlement)
