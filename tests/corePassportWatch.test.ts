@@ -111,3 +111,34 @@ describe("recall watch updates the on-chain passport", () => {
     expect(vi.mocked(reconcileMints).mock.calls[0][0]?.canStartChainWork?.()).toBe(true);
   });
 });
+
+describe("the recall loop cannot starve mint reconciliation", () => {
+  it("slow notifications that would exceed the budget: reconcile already ran, and the loop stopped at the time gate", async () => {
+    let clock = Date.parse("2026-09-26T13:37:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const ids = Array.from({ length: 40 }, (_, i) => `shs-dddddddd-${String(i).padStart(4, "0")}`);
+    vi.mocked(watchedSales).mockResolvedValue(ids.map((_id) => ({ _id, listing: "x" })) as never);
+    vi.mocked(recheckSales).mockReturnValue(ids.map((id) => hit(id)));
+    vi.mocked(flagPostSaleRecall).mockResolvedValue(true);
+    // every push takes 10 s: 40 of them would need 400 s of a 300 s budget
+    vi.mocked(notify).mockImplementation(async () => { clock += 10_000; return { sent: 1, failed: 0, subs: 1 } as never; });
+    const j = await (await run()).json();
+    expect(reconcileMints).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(reconcileMints).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(notify).mock.invocationCallOrder[0]);
+    const notified = vi.mocked(notify).mock.calls.length;
+    expect(notified).toBeLessThan(40);
+    expect(clock - Date.parse("2026-09-26T13:37:00Z")).toBeLessThanOrEqual(300_000 - 90_000 + 10_000); // the last one started with headroom
+    expect(j.hits).toHaveLength(notified);
+    expect(j.deferredHits).toHaveLength(40 - notified); // not flagged, so the next run finds them again
+    expect(flagPostSaleRecall).toHaveBeenCalledTimes(notified);
+  });
+  it("at most 50 recall hits per run even when there is time; the rest wait for the next run", async () => {
+    const ids = Array.from({ length: 60 }, (_, i) => `shs-eeeeeeee-${String(i).padStart(4, "0")}`);
+    vi.mocked(watchedSales).mockResolvedValue(ids.map((_id) => ({ _id, listing: "x" })) as never);
+    vi.mocked(recheckSales).mockReturnValue(ids.map((id) => hit(id)));
+    vi.mocked(flagPostSaleRecall).mockResolvedValue(true);
+    const j = await (await run()).json();
+    expect(notify).toHaveBeenCalledTimes(50);
+    expect(j.deferredHits).toEqual(ids.slice(50));
+  });
+});
