@@ -35,13 +35,21 @@ NURSERY = re.compile(
     r"teether|pacifier|bottle|children's|child's|kids'?)\b", re.I)
 
 MODEL_RX = [
-    re.compile(r"\b(?:model|style|item|sku|part)\s*(?:numbers?|nos?\.?|#)?\s*[:#]?\s*((?:[A-Z0-9][A-Z0-9\-./]{2,}(?:\s*,?\s*(?:and|or|&)?\s*)?)+)", re.I),
+    re.compile(r"\b(?:model|style|item|sku|part)\s*(?:numbers?|nos?\.?|#)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-./]{2,}(?:(?:\s*,\s*(?:and\s+|or\s+)?|\s+(?:and|or|&)\s+)[A-Z0-9][A-Z0-9\-./]{2,})*)", re.I),
 ]
-BATCH_RX = re.compile(r"\b(?:production\s+)?(?:batch|lot|date)\s*(?:codes?|numbers?|nos?\.?)?\s*[:#]?\s*((?:[A-Z0-9][A-Z0-9\-/]{3,}(?:\s*,?\s*(?:and|or|&)?\s*)?)+)", re.I)
+BATCH_RX = re.compile(r"\b(?:production\s+)?(?:batch|lot|date)\s*(?:codes?|numbers?|nos?\.?)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-/]{3,}(?:(?:\s*,\s*(?:and\s+|or\s+)?|\s+(?:and|or|&)\s+)[A-Z0-9][A-Z0-9\-/]{3,})*)", re.I)
 UPC_RX = re.compile(r"\bUPC\s*(?:codes?|numbers?)?\s*[:#]?\s*((?:\d[\d\s-]{10,16}\d(?:\s*(?:,|and)\s*)?)+)", re.I)
 TOKEN = re.compile(r"[A-Z0-9][A-Z0-9\-./]{2,}", re.I)
 STOP = {"AND", "THE", "WITH", "FROM", "THAT", "THIS", "THROUGH", "NUMBER", "NUMBERS", "MODEL", "MODELS", "ITEM",
         "ARE", "WERE", "INCLUDED", "PRINTED", "LOCATED", "LABEL", "ONLY", "FOLLOWING", "BELOW", "RECALL"}
+
+
+# Shapes that look like identifiers but are descriptions: "4-in-1", "6-piece", "4-drawer", "36-inch", years.
+JUNK = re.compile(r"^(?:(?:19|20)\d\d|\d{1,3}|\d+-?(?:in-?1|in-?one|pieces?|pc|pack|drawers?|seats?|ft|in|inch(?:es)?|lbs?|oz|mm|cm|months?|mos?|years?|yrs?|ct|count))$", re.I)
+
+
+def ok_id(t):
+    return len(t) >= 3 and any(c.isdigit() for c in t) and t.upper() not in STOP and not JUNK.match(t)
 
 
 def fold(s):
@@ -85,13 +93,14 @@ def regex_extract(text):
         for m in rx.finditer(text):
             for t in TOKEN.findall(m.group(1)):
                 for part in t.split("/"):   # "71591/71844" lists two model numbers
-                    if len(part) >= 3 and any(c.isdigit() for c in part) and part.upper() not in STOP \
-                            and not re.fullmatch(r"(19|20)\d\d", part):
-                        models.add(part.strip(".,"))
+                    part = part.strip(".,")
+                    if ok_id(part):
+                        models.add(part)
     for m in BATCH_RX.finditer(text):
         for t in TOKEN.findall(m.group(1)):
-            if any(c.isdigit() for c in t) and t.upper() not in STOP and not re.fullmatch(r"(19|20)\d\d", t):
-                batches.add(t.strip(".,"))
+            t = t.strip(".,")
+            if ok_id(t):
+                batches.add(t)
     for m in UPC_RX.finditer(text):
         for u in re.findall(r"\d[\d\s-]{10,16}\d", m.group(1)):
             upcs.add(re.sub(r"\D", "", u))
@@ -175,7 +184,7 @@ def build(use_gemini):
             for v in vals:
                 v = str(v).strip()
                 fv = re.sub(r"\D", "", v) if kind == "upc" else fold(v)
-                if len(fv) < 3 or fv not in (re.sub(r"\D", "", text) if kind == "upc" else ftext):
+                if len(fv) < 3 or (kind != "upc" and not ok_id(v)) or fv not in (re.sub(r"\D", "", text) if kind == "upc" else ftext):
                     stats["gemini_models_rejected"] += kind == "model"
                     rejected += 1
                     continue

@@ -1,0 +1,96 @@
+{
+ "classes": [
+  "inclined_or_inbed_sleeper",
+  "crib_bumper",
+  "drop_side_crib",
+  "other"
+ ],
+ "fixtures": [
+  {
+   "file": "fx0.jpg",
+   "source": "https://www.cpsc.gov/s3fs-public/1-10283AM.png",
+   "label": "inclined_or_inbed_sleeper",
+   "probs": [
+    0.8996663437870486,
+    0.0042345002895683,
+    0.0022375393481027634,
+    0.0938616165752802
+   ],
+   "logits": [
+    3.4039000271880813,
+    -1.954858612511067,
+    -2.5927471815171987,
+    1.1436975952052855
+   ]
+  },
+  {
+   "file": "fx1.jpg",
+   "source": "https://www.cpsc.gov/s3fs-public/Baofali-crib-1.png",
+   "label": "crib_bumper",
+   "probs": [
+    0.00023055153054000495,
+    0.8061360279867679,
+    0.006279224550176331,
+    0.18735419593251573
+   ],
+   "logits": [
+    -4.541088395100587,
+    3.618444984085193,
+    -1.2365610198112365,
+    2.1591934078167685
+   ]
+  },
+  {
+   "file": "fx2.jpg",
+   "source": "https://www.cpsc.gov/s3fs-public/LaJobi-crib.jpg",
+   "label": "drop_side_crib",
+   "probs": [
+    0.001861505867817304,
+    0.003865318247976701,
+    0.9131757107812927,
+    0.08109746510291341
+   ],
+   "logits": [
+    -2.675119333654474,
+    -1.9444610805259515,
+    3.5204232162053906,
+    1.0991466040167786
+   ]
+  },
+  {
+   "file": "fx3.jpg",
+   "source": "https://www.cpsc.gov/s3fs-public/Recall.2011.11019.11019a.jpg",
+   "label": "drop_side_crib",
+   "probs": [
+    0.0013597448330023348,
+    0.00015520025612915532,
+    0.9774439535786973,
+    0.021041101332171245
+   ],
+   "logits": [
+    -1.7866244769076314,
+    -3.956960557177492,
+    4.791019417463507,
+    0.9525561949246857
+   ]
+  },
+  {
+   "file": "fx4.jpg",
+   "source": "https://www.cpsc.gov/s3fs-public/HONEYJOY-1.jpg",
+   "label": "other",
+   "probs": [
+    0.02954030067141696,
+    0.02283878279010691,
+    0.013926113283383485,
+    0.9336948032550927
+   ],
+   "logits": [
+    -0.6110296377687338,
+    -0.8683250028051086,
+    -1.363019362115254,
+    2.8423645284496644
+   ]
+  }
+ ],
+ "note": "probs = sklearn head (ml/out/head_clip.joblib) on the transformers.js q8 embedding in js_q8_embeddings.json"
+}

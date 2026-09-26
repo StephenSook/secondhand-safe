@@ -23,11 +23,18 @@ Two seeded random samples of 20 recalls each, read against the full CPSC descrip
 - Misses that remain: table layouts (a baby-monitor recall listing models in a table, a toy recall with
   a description table). These are the phrasings the Gemini extraction pass exists for.
 
+## Third defect, found by the listing scan (PLAN 2.9)
+
+- Scanning real listings matched "4-in-1", "3-in-1", "6-Piece", "4-Drawer" and years as recall models.
+  Cause: an earlier fix made the list separator optional, so the model regex chained across ordinary words
+  ("style 4-in-1 style cribs model number 5601 ... January 2012 through August 2012"). Fixed: a real
+  separator (comma, and, or, &) is required, punctuation is stripped before filtering, and description
+  shapes (N-in-1, N-piece, N-drawer, sizes, years) are rejected in the builder AND in the app matcher.
+
 ## Status
 
-- Index: 1,137 nursery and children's recalls from 6,036 CPSC recalls (2008 to today); 481 carry at
-  least one model, batch or UPC; 2,054 identifiers. Numbers are written by the script to
-  `recall_stats.json`; read them there, not here.
+- Counts are written by the script to `recall_stats.json` and published in `docs/FACTS.json`; read them
+  there, not here.
 - The Gemini pass is built but has not run: the API key's project has no prepaid credit (HTTP 402 on
   every call, 2026-09-26). The script refuses to write an index that claims a Gemini pass when any call
   failed.

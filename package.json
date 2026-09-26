@@ -10,10 +10,12 @@
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
     "typecheck": "next typegen && tsc --noEmit",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "test:parity": "vitest run --config vitest.parity.config.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
+    "@gsap/react": "^2.1.2",
     "@huggingface/transformers": "^4.3.0",
     "@visa/charts-react": "^5.1.0",
     "@visa/nova-icons-react": "^4.0.0",

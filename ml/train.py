@@ -31,9 +31,29 @@ CLASSES = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"
 HELD_FRAC, HELD_MIN, DUP = 0.35, 8, 0.97
 
 
+# The shipped head is trained on embeddings from the SAME runtime the phone runs (transformers.js, q8,
+# scripts/embed-js.mjs). Python CLIP resizes images slightly differently, which moved logits by up to 0.5.
+SHIPPED_CLIP = os.path.join(OUT, "emb_js_q8.json")
+
+
 def load_emb(name):
+    if name == "clip" and os.path.exists(SHIPPED_CLIP):
+        # transformers.js image_embeds are NOT unit length; normalize so cosine thresholds mean what they say
+        out = {}
+        raw = json.load(open(SHIPPED_CLIP))
+        listings = SHIPPED_CLIP.replace(".json", "_listings.json")
+        if os.path.exists(listings):
+            raw = {**json.load(open(listings)), **raw}
+        for u, v in raw.items():
+            a = np.asarray(v, dtype=np.float32)
+            out[u] = a / (np.linalg.norm(a) or 1.0)
+        return out
     d = np.load(os.path.join(OUT, f"emb_{name}.npz"))
     return {u: e for u, e in zip(d["urls"], d["emb"])}
+
+
+def clip_source():
+    return "transformers.js q8 (shipped runtime)" if os.path.exists(SHIPPED_CLIP) else "python transformers fp32"
 
 
 def group_of(r, meta):
@@ -49,6 +69,11 @@ def make_split(labels, emb):
             meta[row["images"][0]] = row
     rng = random.Random(13)
     held, train = [], []
+    # Hard negatives mined from the listing scan are training data only; excluding them here keeps the held-out
+    # selection identical to the split before they existed.
+    extra = [r for r in labels if r.get("reviewed_by", "").startswith("scan review")]
+    labels = [r for r in labels if r not in extra]
+    train += extra
     for cls in CLASSES:
         rows = [r for r in labels if r["label"] == cls]
         groups = {}
@@ -91,6 +116,9 @@ def main():
     clip = load_emb("clip")
     labels = [r for r in labels if r["url"] in clip]
     train, held, dropped = make_split(labels, clip)
+    if len(train) < 0.4 * len(labels):
+        sys.exit(f"only {len(train)} of {len(labels)} images left to train on ({dropped} dropped as near-duplicates); "
+                 "check that embeddings are normalized")
     meta = {}
     for name in ("listings.jsonl", "cpsc_images.jsonl"):
         for line in open(os.path.join(HERE, "data", name)):
@@ -113,11 +141,12 @@ def main():
         X = np.stack([emb[r["url"]] for r in train])
         model, C, cvf1 = fit(X, y)
         joblib.dump(model, os.path.join(OUT, f"head_{name}.joblib"))
-        info[name] = {"C": C, "train_cv_macro_f1": round(cvf1, 4)}
+        info[name] = {"C": C, "train_cv_macro_f1": round(cvf1, 4),
+                      "embeddings": clip_source() if name == "clip" else "python transformers fp32 (DINOv2)"}
         print(f"{name}: C={C} 5-fold train macro-F1 {cvf1:.3f}")
         if name == "clip":
             os.makedirs(os.path.join(HERE, "..", "public", "models"), exist_ok=True)
-            json.dump({"model": "openai/clip-vit-base-patch32 (Xenova/clip-vit-base-patch32)",
+            json.dump({"model": "Xenova/clip-vit-base-patch32", "embeddings": clip_source(),
                        "input": "L2-normalized image embedding [512]", "classes": CLASSES,
                        "coef": np.round(model.coef_, 7).tolist(), "intercept": np.round(model.intercept_, 7).tolist()},
                       open(os.path.join(HERE, "..", "public", "models", "head.json"), "w"))
