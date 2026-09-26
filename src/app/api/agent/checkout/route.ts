@@ -7,11 +7,18 @@ import { signRequest } from "@/server/tap/tap";
  * (RFC 9421, Ed25519) and sends it to the merchant endpoint /api/checkout on this same deployment.
  * POST { listing, amountUsd, tamper?: boolean }. With tamper, the amount is changed AFTER signing, the way a
  * man-in-the-middle would; the merchant must refuse it. Returns both sides so the demo shows the handshake.
+ * What "verified" means: the request came from OUR registered agent key and was not altered in transit. It is
+ * not proof that a parent approved the amount (in Visa's model that is Intelligent Commerce mandates, which are
+ * gated). Agent purchases are capped at AGENT_MAX_USD for that reason.
  */
+const AGENT_MAX_USD = 200;
 export async function POST(request: Request) {
   const b = (await request.json().catch(() => null)) as { listing?: string; amountUsd?: number; tamper?: boolean } | null;
   const listing = typeof b?.listing === "string" ? b.listing.slice(0, 80) : "Harppa high chair (table prop)";
   const amountUsd = typeof b?.amountUsd === "number" ? b.amountUsd : 64;
+  if (!(amountUsd >= 1 && amountUsd <= AGENT_MAX_USD)) {
+    return Response.json({ error: `Agent purchases are limited to $1 to $${AGENT_MAX_USD}.` }, { status: 400 });
+  }
   let key;
   try {
     key = agentKey();

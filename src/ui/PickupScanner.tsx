@@ -94,7 +94,7 @@ export function PickupScanner() {
       if (m.status === "HELD" && m.token) {
         saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at });
         setVerdict(null);
-        setAgentMsg({ ok: true, text: `Merchant verified the agent's signature (key ${m.tap?.keyid}), then Visa held the payment.`, sig: j.agent["signature-input"] });
+        setAgentMsg({ ok: true, text: `The merchant checked the signature: this came from our registered agent (key ${m.tap?.keyid}) and was not altered on the way. Then Visa held the payment.`, sig: j.agent["signature-input"] });
       } else {
         setAgentMsg({ ok: false, text: `Merchant refused (HTTP ${m.httpStatus}): ${m.error ?? "unknown"}. Signed $${j.agent.signed.amountUsd}, sent $${j.agent.sent.amountUsd}.`, sig: j.agent["signature-input"] });
       }

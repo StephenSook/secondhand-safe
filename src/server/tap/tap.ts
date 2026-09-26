@@ -59,9 +59,11 @@ export function signRequest(method: string, url: string, body: string, key: { id
 
 export type VerifyResult = { ok: true; keyid: string; nonce: string } | { ok: false; reason: string };
 
-const INPUT_RX = /^sig1=\(([^)]*)\);created=(\d+);expires=(\d+);keyid="([^"]+)";alg="([^"]+)";nonce="([^"]+)";tag="([^"]+)"$/;
+// nonce capped to 8-64 url-safe chars so junk requests cannot store large values
+const INPUT_RX = /^sig1=\(([^)]*)\);created=(\d+);expires=(\d+);keyid="([^"]{1,64})";alg="([^"]+)";nonce="([A-Za-z0-9_-]{8,64})";tag="([^"]+)"$/;
 
-/** Order per PLAN: digest, then window, then nonce, then signature. Unknown key and wrong tag are refused. */
+/** Order: components, alg/tag, digest, window, known key, SIGNATURE, then nonce. The nonce is recorded only for
+ *  a request whose signature verified, so unauthenticated junk cannot fill the nonce store. */
 export async function verifyRequest(method: string, url: string, body: string, h: Partial<SignedHeaders>,
   pubB64uById: (id: string) => string | undefined, seenNonce: (n: string) => Promise<boolean>,
   now = Math.floor(Date.now() / 1000)): Promise<VerifyResult> {
@@ -78,8 +80,14 @@ export async function verifyRequest(method: string, url: string, body: string, h
   if (expires - created > TAP_WINDOW_S || created > now + 5 || now > expires) return { ok: false, reason: "expired" };
   const pub = pubB64uById(keyid);
   if (!pub) return { ok: false, reason: "unknown-key" };
-  if (await seenNonce(nonce)) return { ok: false, reason: "replay" };
   const base = signatureBase(method, new URL(url), digest, input.slice("sig1=".length));
-  const good = verify(null, Buffer.from(base), publicKeyFromB64u(pub), Buffer.from(sigHeader[1], "base64"));
-  return good ? { ok: true, keyid, nonce } : { ok: false, reason: "signature" };
+  let good = false;
+  try {
+    good = verify(null, Buffer.from(base), publicKeyFromB64u(pub), Buffer.from(sigHeader[1], "base64"));
+  } catch {
+    good = false; // malformed key or signature bytes: a refusal, never a 500
+  }
+  if (!good) return { ok: false, reason: "signature" };
+  if (await seenNonce(nonce)) return { ok: false, reason: "replay" };
+  return { ok: true, keyid, nonce };
 }

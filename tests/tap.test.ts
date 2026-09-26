@@ -41,6 +41,18 @@ describe("Trusted Agent Protocol (RFC 9421, Ed25519)", () => {
     const h = signRequest("POST", URL_, body, { id: "agent-2", seedHex });
     expect(await verifyRequest("POST", URL_, body, h, keys, mkSeen())).toMatchObject({ ok: false, reason: "unknown-key" });
   });
+  it("a bad signature never records its nonce (junk cannot fill the store) and never throws", async () => {
+    const seenSet = new Set<string>();
+    const seen = async (n: string) => { const s = seenSet.has(n); seenSet.add(n); return s; };
+    const h = signRequest("POST", URL_, body, { id: "agent-1", seedHex });
+    expect(await verifyRequest("POST", URL_, body, { ...h, signature: "sig1=:AAAA:" }, keys, seen)).toMatchObject({ ok: false, reason: "signature" });
+    expect(seenSet.size).toBe(0);
+  });
+  it("an oversized nonce is malformed", async () => {
+    const h = signRequest("POST", URL_, body, { id: "agent-1", seedHex });
+    const big = h["signature-input"].replace(/nonce="[^"]+"/, `nonce="${"a".repeat(500)}"`);
+    expect(await verifyRequest("POST", URL_, body, { ...h, "signature-input": big }, keys, mkSeen())).toMatchObject({ ok: false, reason: "malformed" });
+  });
   it("a widened window in Signature-Input is refused", async () => {
     const h = signRequest("POST", URL_, body, { id: "agent-1", seedHex });
     const widened = h["signature-input"].replace(/expires=(\d+)/, (_, e) => `expires=${Number(e) + 100000}`);
