@@ -73,6 +73,31 @@ def fetch_year(y):
     return d
 
 
+def slug_words(s):
+    return set(re.findall(r"[a-z0-9]{4,}", (s or "").lower()))
+
+
+def title_matches_url(rec):
+    """CPSC's API sometimes pairs a recall's URL, products, hazard and photos with the TITLE of a neighbouring
+    recall (26569: the CooCooBaby lounger page carries 26568's Joolz Aer2 title). The URL slug is the recall
+    page's own title, so the API title is trusted only if it shares a word with it. Old-style URLs
+    (".../prhtml10/10189.html") carry no words and are trusted as-is."""
+    slug = (rec.get("URL") or "").rstrip("/").rsplit("/", 1)[-1]
+    if slug.count("-") < 4:
+        return True
+    title_words = [w.lower() for w in re.findall(r"[A-Za-z0-9]{4,}", rec.get("Title") or "")[:4]]
+    return any(w in slug_words(slug.replace("-", " ")) for w in title_words)
+
+
+def fix_title(rec):
+    """Replace a mismatched API title with the one in the recall page's URL slug, and mark it, so an
+    identifier from the wrong title can never attach to this recall."""
+    if title_matches_url(rec):
+        return rec
+    slug = rec["URL"].rstrip("/").rsplit("/", 1)[-1]
+    return {**rec, "Title": slug.replace("-", " "), "TitleFromUrl": True, "ApiTitle": rec.get("Title")}
+
+
 def text_of(rec):
     parts = [rec.get("Title") or "", rec.get("Description") or ""]
     parts += [p.get("Name") or "" for p in rec.get("Products") or []]
@@ -200,7 +225,9 @@ def build(use_gemini):
         d = fetch_year(y)
         recs += d
         print(f"{y}: {len(d)} recalls", flush=True)
-    recs = list({r["RecallNumber"]: r for r in recs}.values())
+    recs = [fix_title(r) for r in {r["RecallNumber"]: r for r in recs}.values()]
+    fixed = [r["RecallNumber"] for r in recs if r.get("TitleFromUrl")]
+    print(f"{len(fixed)} CPSC titles did not match their own recall page and were taken from the URL: {fixed}")
     nursery = [r for r in recs if is_nursery(r)]
     print(f"{len(recs)} recalls total, {len(nursery)} nursery/children")
     vertex = os.environ.get("VERTEX_PROJECT") and os.environ.get("VERTEX_TOKEN")
@@ -262,6 +289,7 @@ def build(use_gemini):
         out.append({
             "source": "CPSC", "recallNumber": r["RecallNumber"], "recallDate": (r.get("RecallDate") or "")[:10],
             "title": r.get("Title"), "url": r.get("URL"),
+            **({"titleFromUrl": True} if r.get("TitleFromUrl") else {}),
             "products": [p.get("Name") for p in r.get("Products") or [] if p.get("Name")],
             "brands": g.get("brands", []), "productType": g.get("productType", ""),
             "hazard": "; ".join(h.get("Name", "") for h in r.get("Hazards") or [])[:600],

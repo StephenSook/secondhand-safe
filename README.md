@@ -37,9 +37,9 @@ MCP config for a client that speaks Streamable HTTP:
 
 | | |
 |---|---|
-| CPSC recalls fetched / nursery and children's kept | 6036 / 1137 |
+| CPSC recalls fetched / nursery and children's kept | 6036 / 1136 |
 | NHTSA child car seat recall campaigns (since 2010) | 71 |
-| Nursery recalls with a model, batch or UPC on file (regex + Gemini, each value found verbatim in the recall) | 822 |
+| Nursery recalls with a model, batch or UPC on file (regex + Gemini, each value found verbatim in the recall) | 820 |
 | Real marketplace listings scanned | 1662 |
 | Banned-type model, held-out macro-F1 (95% CI) | 0.7243 (0.6017 to 0.8127) |
 | Off-the-shelf CLIP zero-shot on the same held-out set | 0.558 |
