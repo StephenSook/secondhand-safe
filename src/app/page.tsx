@@ -1,5 +1,6 @@
 import metrics from "../../ml/out/metrics.json";
 import labels from "../../ml/out/split.json";
+import facts from "../../docs/FACTS.json";
 import { INDEX_SIZE } from "@/server/recalls/match";
 import { Preloader } from "@/ui/Preloader";
 import { Nav } from "@/ui/Nav";
@@ -18,8 +19,8 @@ type M = {
     per_class: OracleData["perClass"]; confusion: number[][] }>;
 };
 
-/** Harvest counts are fixed facts of the committed dataset (ml/labels.csv provenance, see PLAN 1.6). */
-const HARVEST = { listings: 1662, cpscPhotos: 243 };
+/** CPSC recall photos in the training pool (ml/harvest.py cpsc run; see data/handcheck.md for the index). */
+const CPSC_PHOTOS = 243;
 
 export default function Home() {
   const m = metrics as unknown as M;
@@ -37,8 +38,10 @@ export default function Home() {
     ordinaryN: head.confusion[3].reduce((a, b) => a + b, 0),
     perClass: head.per_class,
     confusion: head.confusion,
-    listings: HARVEST.listings,
-    cpscPhotos: HARVEST.cpscPhotos,
+    listings: facts.scanned,
+    cpscPhotos: CPSC_PHOTOS,
+    rounds: facts.scanRounds,
+    hardNegatives: facts.hardNegativesFromScan,
     labels: split.train.length + split.held_out.length,
   };
   return (

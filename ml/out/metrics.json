@@ -1,5 +1,5 @@
 {
- "asOf": "2026-09-26T06:38:28+00:00",
+ "asOf": "2026-09-26T06:54:00+00:00",
  "classes": [
   "inclined_or_inbed_sleeper",
   "crib_bumper",
@@ -7,7 +7,7 @@
   "other"
  ],
  "held_out_n": 171,
- "train_n": 302,
+ "train_n": 325,
  "split_rule": "(fixed before any training, seed 13):\n  groups    = one group per CPSC recall number, one group per marketplace listing\n  held-out  = about 35% of each class's groups (at least 8 images); no recall and no listing is ever on\n              both sides, so held-out measures products the head has never seen\n  leakage   = any train image with cosine >= 0.97 to a held-out image is removed from train\n              (sellers and recall notices reuse the same product photos)\n  why not \"listing photos only\": banned products are rare on the marketplaces (eBay removes most of them),\n  so the banned classes have fewer than 10 listing photos each; every one of those is held out.",
  "train_dropped_as_near_duplicates": 7,
  "systems": {
@@ -72,12 +72,12 @@
    ]
   },
   "clip_head": {
-   "macro_f1": 0.7415,
+   "macro_f1": 0.7243,
    "macro_f1_ci95": [
-    0.6288,
-    0.8291
+    0.6017,
+    0.8127
    ],
-   "accuracy": 0.8363,
+   "accuracy": 0.8246,
    "per_class": {
     "inclined_or_inbed_sleeper": {
      "precision": 0.8333,
@@ -86,21 +86,21 @@
      "n": 9
     },
     "crib_bumper": {
-     "precision": 0.8462,
-     "recall": 0.4583,
-     "f1": 0.5946,
+     "precision": 0.8333,
+     "recall": 0.4167,
+     "f1": 0.5556,
      "n": 24
     },
     "drop_side_crib": {
-     "precision": 0.9565,
-     "recall": 0.7097,
-     "f1": 0.8148,
+     "precision": 0.9545,
+     "recall": 0.6774,
+     "f1": 0.7925,
      "n": 31
     },
     "other": {
-     "precision": 0.814,
+     "precision": 0.8015,
      "recall": 0.9813,
-     "f1": 0.8898,
+     "f1": 0.8824,
      "n": 107
     }
    },
@@ -113,15 +113,15 @@
     ],
     [
      1,
-     11,
+     10,
      1,
-     11
+     12
     ],
     [
      0,
      0,
-     22,
-     9
+     21,
+     10
     ],
     [
      0,
@@ -132,10 +132,10 @@
    ]
   },
   "dino_head": {
-   "macro_f1": 0.7693,
+   "macro_f1": 0.7618,
    "macro_f1_ci95": [
-    0.6662,
-    0.8463
+    0.658,
+    0.8409
    ],
    "accuracy": 0.8538,
    "per_class": {
@@ -146,21 +146,21 @@
      "n": 9
     },
     "crib_bumper": {
-     "precision": 0.9,
-     "recall": 0.375,
-     "f1": 0.5294,
+     "precision": 0.8889,
+     "recall": 0.3333,
+     "f1": 0.4848,
      "n": 24
     },
     "drop_side_crib": {
-     "precision": 0.8387,
+     "precision": 0.8667,
      "recall": 0.8387,
-     "f1": 0.8387,
+     "f1": 0.8525,
      "n": 31
     },
     "other": {
-     "precision": 0.8468,
-     "recall": 0.9813,
-     "f1": 0.9091,
+     "precision": 0.8413,
+     "recall": 0.9907,
+     "f1": 0.9099,
      "n": 107
     }
    },
@@ -173,9 +173,9 @@
     ],
     [
      0,
-     9,
+     8,
      4,
-     11
+     12
     ],
     [
      0,
@@ -186,8 +186,8 @@
     [
      0,
      1,
-     1,
-     105
+     0,
+     106
     ]
    ]
   }
@@ -195,12 +195,12 @@
  "train_info": {
   "clip": {
    "C": 30,
-   "train_cv_macro_f1": 0.8952,
+   "train_cv_macro_f1": 0.8495,
    "embeddings": "transformers.js q8 (shipped runtime)"
   },
   "dino": {
    "C": 30,
-   "train_cv_macro_f1": 0.9363,
+   "train_cv_macro_f1": 0.9252,
    "embeddings": "python transformers fp32 (DINOv2)"
   }
  }

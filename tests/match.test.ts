@@ -43,6 +43,10 @@ describe("checkLabel against the real CPSC index", () => {
     expect(checkLabel({ model: "100" }).kind).not.toBe("RECALL_MATCH");
   });
 
+  it.each(["4-in-1", "3-IN-1", "6-Piece", "2012", "4-Drawer"])("description token %s never matches a recall", (m) => {
+    expect(checkLabel({ model: m }).kind).not.toBe("RECALL_MATCH");
+  });
+
   it("nothing readable is UNREADABLE", () => {
     expect(checkLabel({}).kind).toBe("UNREADABLE");
   });

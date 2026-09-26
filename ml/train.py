@@ -40,7 +40,11 @@ def load_emb(name):
     if name == "clip" and os.path.exists(SHIPPED_CLIP):
         # transformers.js image_embeds are NOT unit length; normalize so cosine thresholds mean what they say
         out = {}
-        for u, v in json.load(open(SHIPPED_CLIP)).items():
+        raw = json.load(open(SHIPPED_CLIP))
+        listings = SHIPPED_CLIP.replace(".json", "_listings.json")
+        if os.path.exists(listings):
+            raw = {**json.load(open(listings)), **raw}
+        for u, v in raw.items():
             a = np.asarray(v, dtype=np.float32)
             out[u] = a / (np.linalg.norm(a) or 1.0)
         return out
@@ -65,6 +69,11 @@ def make_split(labels, emb):
             meta[row["images"][0]] = row
     rng = random.Random(13)
     held, train = [], []
+    # Hard negatives mined from the listing scan are training data only; excluding them here keeps the held-out
+    # selection identical to the split before they existed.
+    extra = [r for r in labels if r.get("reviewed_by", "").startswith("scan review")]
+    labels = [r for r in labels if r not in extra]
+    train += extra
     for cls in CLASSES:
         rows = [r for r in labels if r["label"] == cls]
         groups = {}

@@ -17,12 +17,17 @@ export function fold(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
 }
 
+/** Description-shaped tokens that are never model numbers: "4-in-1", "6-piece", "4-drawer", years, short numbers. */
+const JUNK = /^(?:(?:19|20)\d\d|\d{1,3}|\d+-?(?:in-?1|in-?one|pieces?|pc|pack|drawers?|seats?|ft|in|inch(?:es)?|lbs?|oz|mm|cm|months?|mos?|years?|yrs?|ct|count))$/i;
+export const isJunkId = (v: string) => JUNK.test(v.trim());
+
 type Entry = { recall: RecallDoc; value: string };
 const byModel = new Map<string, Entry[]>();
 const byUpc = new Map<string, Entry[]>();
 for (const r of RECALLS) {
   for (const id of r.identifiers) {
     if (id.kind === "model") {
+      if (isJunkId(id.value)) continue;
       const k = fold(id.value);
       if (k.length >= MIN_MODEL_LEN) byModel.set(k, [...(byModel.get(k) ?? []), { recall: r, value: id.value }]);
     } else if (id.kind === "upc") {
@@ -71,7 +76,7 @@ export function checkLabel(input: LabelInput): Verdict {
     const hit = byUpc.get(input.upc.replace(/\D/g, ""));
     if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch);
   }
-  if (input.model && fold(input.model).length >= MIN_MODEL_LEN) {
+  if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
     if (hit) return recallVerdict(pick(hit), "model", input.model, input.batch);
   }

@@ -1,12 +1,12 @@
 {
- "regex_models": 1653,
+ "regex_models": 705,
  "gemini_models_kept": 0,
  "gemini_models_rejected": 0,
- "asOf": "2026-09-26T06:20:33+00:00",
+ "asOf": "2026-09-26T06:51:00+00:00",
  "recallsFetched": 6036,
  "nurseryRecalls": 1137,
- "withAnyIdentifier": 481,
- "identifiers": 2054,
+ "withAnyIdentifier": 383,
+ "identifiers": 999,
  "geminiValuesRejected": 0,
  "geminiModel": null,
  "geminiRecords": 0

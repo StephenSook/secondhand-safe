@@ -1,0 +1,49 @@
+{
+ "asOf": "2026-09-26T06:54:24+00:00",
+ "scanned": 1662,
+ "scannedBySource": {
+  "ebay": 1049,
+  "craigslist": 613
+ },
+ "scannedAtlanta": 602,
+ "flagged": 9,
+ "precisionReviewed": 0.0,
+ "scanRounds": [
+  {
+   "round": "01",
+   "flags": 39,
+   "confirmed": 1,
+   "unsure": 3,
+   "falseAlarms": 35,
+   "unreviewed": 0
+  },
+  {
+   "round": "02",
+   "flags": 9,
+   "confirmed": 0,
+   "unsure": 2,
+   "falseAlarms": 7,
+   "unreviewed": 0
+  }
+ ],
+ "hardNegativesFromScan": 23,
+ "classifier": {
+  "macroF1": 0.7243,
+  "macroF1Ci95": [
+   0.6017,
+   0.8127
+  ],
+  "zeroShotMacroF1": 0.558,
+  "heldOut": 171,
+  "falseAlarmsOnOrdinary": 2,
+  "falseAlarmsZeroShot": 38,
+  "ordinaryHeldOut": 107,
+  "embeddings": "transformers.js q8 (shipped runtime)"
+ },
+ "recallIndex": {
+  "recallsFetched": 6036,
+  "nurseryRecalls": 1137,
+  "withAnyIdentifier": 383,
+  "identifiers": 999
+ }
+}

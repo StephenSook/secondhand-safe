@@ -18,6 +18,8 @@ export type OracleData = {
   listings: number;
   cpscPhotos: number;
   labels: number;
+  rounds: { round: string; flags: number; confirmed: number; unsure: number; falseAlarms: number }[];
+  hardNegatives: number;
 };
 
 const NAMES: Record<string, string> = {
@@ -75,6 +77,22 @@ export function Oracle({ d }: { d: OracleData }) {
               <p className="mt-2 font-bold">macro-F1 on held-out products (95% CI {d.ci[0].toFixed(2)} to {d.ci[1].toFixed(2)}), vs {d.zeroShotF1.toFixed(2)} zero-shot</p>
             </div>
           </div>
+
+          {d.rounds.length >= 2 && (
+            <div className="mt-10 rounded-[2rem] bg-ink/40 border-[3px] border-aqua p-6 sm:p-8 grid md:grid-cols-[1fr_auto_1fr] gap-6 items-center">
+              <div>
+                <p className="text-sm font-extrabold tracking-wider text-aqua">SCAN, ROUND 1 · {d.listings.toLocaleString("en-US")} REAL LISTINGS</p>
+                <p className="display text-5xl mt-1">{d.rounds[0].flags} flags</p>
+                <p className="mt-2 font-semibold text-paper/80">We read every one: {d.rounds[0].confirmed} real, {d.rounds[0].unsure} unsure, {d.rounds[0].falseAlarms} false alarms (crib skirts, rail covers, dollhouse cribs).</p>
+              </div>
+              <p className="hand text-4xl text-amber text-center rotate-[-4deg]">learned from its<br />own mistakes →</p>
+              <div>
+                <p className="text-sm font-extrabold tracking-wider text-aqua">ROUND {Number(d.rounds.at(-1)!.round)} · SAME LISTINGS</p>
+                <p className="display text-5xl mt-1">{d.rounds.at(-1)!.flags} flags</p>
+                <p className="mt-2 font-semibold text-paper/80">After adding {d.hardNegatives} reviewed false alarms as training data. The held-out test set was not touched.</p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-14 grid lg:grid-cols-2 gap-10 items-start">
             <div>

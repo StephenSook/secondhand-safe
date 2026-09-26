@@ -19,7 +19,10 @@ CLASSES = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"
 
 def main():
     votes = collections.defaultdict(set)
+    train_only = set()
     for r in csv.DictReader(open(os.path.join(HERE, "review_decisions.csv"))):
+        if r["pool"] == "scan":   # scan false alarms (ml/review.csv): hard negatives, never held out
+            train_only.add(r["url"])
         if r["label"] not in CLASSES + ["drop"]:
             sys.exit(f"bad label {r['label']!r} for {r['url']}")
         votes[r["url"]].add(r["label"])
@@ -40,7 +43,8 @@ def main():
             continue
         m = meta[u]
         out.append({"url": u, "label": cls, "source": m["source"], "listing_id": m["id"],
-                    "title": (m.get("title") or "")[:120], "reviewed_by": "contact-sheet review"})
+                    "title": (m.get("title") or "")[:120],
+                    "reviewed_by": "scan review, hard negative (train only)" if u in train_only else "contact-sheet review"})
     with open(os.path.join(HERE, "labels.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=["url", "label", "source", "listing_id", "title", "reviewed_by"])
         w.writeheader()
