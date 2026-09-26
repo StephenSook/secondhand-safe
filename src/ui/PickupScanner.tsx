@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { STORAGE_BLOCKED, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth } from "./holdGuard";
 import { CardFields, type CardState } from "./CardFields";
 import { DEMO_TABLE } from "@/core/demoTable";
 import type { Verdict } from "@/core/verdict";
@@ -108,26 +109,48 @@ export function PickupScanner() {
 
   const [agentMsg, setAgentMsg] = useState<{ ok: boolean; text: string; sig?: string } | null>(null);
 
+  // one open hold at a time across /shop and /pickup (src/ui/holdGuard.ts)
+  const [, bumpGuard] = useState(0);
+  const guardSnap = useSyncExternalStore(noSubscribe, readBoth, () => "\n");
+  const pendingHold = (() => { const h = openHold(guardSnap); return h?.pending ? h : null; })();
+  /** Refuses (with the reason) when a hold MAY already exist, then writes the pending marker. */
+  function beginHold(): boolean {
+    const existing = openHold();
+    if (existing) { setDealErr(existing.text); bumpGuard((n) => n + 1); return false; }
+    if (!markPending({ listingId: `table:${pick}`, listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd })) { setDealErr(STORAGE_BLOCKED); return false; }
+    bumpGuard((n) => n + 1);
+    return true;
+  }
+  function endHold(noHold: boolean) {
+    if (noHold) clearPending();
+    bumpGuard((n) => n + 1);
+  }
+
   async function agentBuy(tamper: boolean) {
     setDealErr("");
     setAgentMsg(null);
+    if (!beginHold()) return;
+    let noHold = false; // cleared only on a confirmed hold or an explicit placed:false
     setBusy(tamper ? "Sending a request edited after signing…" : "Our agent is signing the checkout (Trusted Agent Protocol)…");
     try {
       const r = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd, tamper }) });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      if (!r.ok) { noHold = explicitlyNoHold(j); throw new Error(j.error ?? `HTTP ${r.status}`); }
       const m = j.merchant;
       if (m.status === "HELD" && m.token) {
         saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at, card: m.card });
+        noHold = true; // the hold is now the open deal; the pending marker is no longer needed
         setVerdict(null);
         setAgentMsg({ ok: true, text: `The merchant checked the signature: this came from our registered agent (key ${m.tap?.keyid}) and was not altered on the way. Then Visa held the payment.`, sig: j.agent["signature-input"] });
       } else {
+        noHold = explicitlyNoHold(j);
         setAgentMsg({ ok: false, text: `Merchant refused (HTTP ${m.httpStatus}): ${m.error ?? "unknown"}. Signed $${j.agent.signed.amountUsd}, sent $${j.agent.sent.amountUsd}.`, sig: j.agent["signature-input"] });
       }
     } catch (e) {
       setDealErr((e as Error).message);
     } finally {
+      endHold(noHold);
       setBusy("");
     }
   }
@@ -136,6 +159,8 @@ export function PickupScanner() {
     setDealErr("");
     const usingSaved = !!(useSaved && saved);
     if (!usingSaved && card.state === "loading") return setDealErr("Visa's card fields are still loading.");
+    if (!beginHold()) return;
+    let noHold = false;
     setBusy(!usingSaved && card.state === "ready" ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
     try {
       const transientTokenJwt = !usingSaved && card.state === "ready" ? await card.tokenize() : undefined;
@@ -146,6 +171,7 @@ export function PickupScanner() {
       const j = await r.json();
       if (!r.ok) {
         if (usingSaved && r.status === 400) { forgetSaved(); }
+        noHold = explicitlyNoHold(j);
         throw new Error(j.error ?? `HTTP ${r.status}`);
       }
       if (j.savedCard) {
@@ -159,10 +185,12 @@ export function PickupScanner() {
       }
       saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card,
         promotion: j.promotion, askedUsd: j.askedUsd });
+      noHold = true; // now the open deal
       setVerdict(null);
     } catch (e) {
       setDealErr((e as Error).message);
     } finally {
+      endHold(noHold);
       setBusy("");
     }
   }
@@ -340,6 +368,12 @@ export function PickupScanner() {
           {visaLive && !deal && (
             <>
               <p className="display text-4xl mt-1">Agree on a price</p>
+              {pendingHold && (
+                <p role="alert" className="mt-3 rounded-xl border-2 border-ink bg-paper p-3 text-sm font-bold">
+                  {pendingHold.text}
+                  <button type="button" onClick={() => { clearPending(); setDealErr(""); bumpGuard((n) => n + 1); }} className="ml-2 underline">I checked: clear it</button>
+                </p>
+              )}
               <div className="mt-4 grid gap-2">
                 {LISTINGS.map((l, i) => (
                   <label key={l.label} className="flex items-center gap-3 rounded-xl border-2 border-ink bg-sand/60 px-3 py-2 font-semibold cursor-pointer">

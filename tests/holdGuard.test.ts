@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { openHold } from "@/ui/ShopAgent";
+import { openHold, explicitlyNoHold } from "@/ui/holdGuard";
 
 // openHold(raw) reads "<shs-deal JSON>\n<shs-pending JSON>" (what the shop page reads from sessionStorage).
 const deal = (o: object) => JSON.stringify(o);
@@ -23,5 +23,19 @@ describe("one open hold at a time, across reloads and lost answers", () => {
   it("corrupt storage never throws and never invents a hold", () => {
     expect(openHold("{not json\n{also not")).toBeNull();
     expect(openHold(`${deal({ status: "HELD" })}\n`)).toBeNull(); // no dealId: not a hold we can name
+  });
+});
+
+describe("only an explicit 'no hold placed' clears the pending marker", () => {
+  it("reads placed:false from /api/checkout and from the agent wrapper's merchant", () => {
+    expect(explicitlyNoHold({ placed: false, error: "x" })).toBe(true);
+    expect(explicitlyNoHold({ merchant: { placed: false, httpStatus: 401 } })).toBe(true);
+  });
+  it("anything else keeps it: uncertain, missing flags, a wrapper refusal without the flag, junk", () => {
+    expect(explicitlyNoHold({ uncertain: true, error: "x" })).toBe(false);
+    expect(explicitlyNoHold({ error: "HTTP 500" })).toBe(false);
+    expect(explicitlyNoHold({ merchant: { uncertain: true } })).toBe(false);
+    expect(explicitlyNoHold({ merchant: {}, placed: false })).toBe(false); // the merchant's answer wins
+    expect(explicitlyNoHold(null)).toBe(false);
   });
 });
