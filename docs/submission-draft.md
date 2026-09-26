@@ -84,6 +84,13 @@ TODO (Stephen): one or two sentences on why this one matters to you.
   Playwright end to end (including both real Visa paths when keys are present), a secret scan and an em-dash
   check. A probe hits production every 30 minutes.
 
+## How we used Notability (for the Notability challenge; tag the project "Notability")
+
+We planned and rehearsed the build in Notability. Our architecture, money-flow and expo-demo note lives there,
+and Notability's AI turned it into Smart Notes ("System Architecture & Payment Flow") and a 20-question
+practice quiz that we used to drill judge questions, like "what triggers a reversal of the payment hold?".
+Screenshots: `docs/stills/notability/` (note with Smart Notes, the generated quiz, the quiz in use).
+
 ## Challenges we ran into
 
 - The model's first pass on real listings flagged crib skirts and dollhouse furniture. Reading every flag and
