@@ -15,8 +15,12 @@ export const VECTOR_COLLECTION = "image_vectors";
 export const VECTOR_INDEX = "img_vec";
 export const DIMS = 512;
 
-/** Cosine at or above this is shown as a strong resemblance. Calibrated on our listings (see seed script). */
-export const STRONG_COSINE = Number(process.env.LOOKALIKE_STRONG_COSINE ?? "0.9");
+/**
+ * Cosine at or above this is shown as "very close match: compare the label". Calibrated on held-out photos
+ * (ml/out/lookalike_eval.json): at 0.93 the top answer was the right recall 15 of 18 times, and under 0.2% of
+ * our 1,654 scanned listing photos reach 0.92. Resemblance never flags or decides anything.
+ */
+export const STRONG_COSINE = Number(process.env.LOOKALIKE_STRONG_COSINE ?? "0.93");
 
 export interface LookAlike {
   recallNumber: string;

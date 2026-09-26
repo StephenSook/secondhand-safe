@@ -1,0 +1,878 @@
+{
+  "what": "Held-out retrieval: a recall's SECOND CPSC photo, searched against an index holding only each recall's first photo",
+  "index": "MongoDB Atlas Vector Search img_vec (cosine, 512-d CLIP ViT-B/32 transformers.js q8)",
+  "sampleSeed": 20260926,
+  "sampled": 150,
+  "evaluated": 144,
+  "hit1": 60,
+  "hit3": 68,
+  "hit1Rate": 0.417,
+  "hit3Rate": 0.472,
+  "asOf": "2026-09-26T18:30:33.240Z",
+  "detail": [
+    {
+      "recall": "26181",
+      "rank": null,
+      "top1": "24702",
+      "top1Cosine": 0.827
+    },
+    {
+      "recall": "26342",
+      "rank": null,
+      "top1": "23263",
+      "top1Cosine": 0.792
+    },
+    {
+      "recall": "26609",
+      "rank": null,
+      "top1": "10198",
+      "top1Cosine": 0.828
+    },
+    {
+      "recall": "13286",
+      "rank": null,
+      "top1": "16205",
+      "top1Cosine": 0.606
+    },
+    {
+      "recall": "23210",
+      "rank": 1,
+      "top1": "23210",
+      "top1Cosine": 0.885
+    },
+    {
+      "recall": "08202",
+      "rank": 2,
+      "top1": "08544",
+      "top1Cosine": 0.9
+    },
+    {
+      "recall": "16097",
+      "rank": null,
+      "top1": "12032",
+      "top1Cosine": 0.635
+    },
+    {
+      "recall": "24184",
+      "rank": 1,
+      "top1": "24184",
+      "top1Cosine": 0.861
+    },
+    {
+      "recall": "13008",
+      "rank": null,
+      "top1": "17063",
+      "top1Cosine": 0.833
+    },
+    {
+      "recall": "26472",
+      "rank": null,
+      "top1": "25245",
+      "top1Cosine": 0.715
+    },
+    {
+      "recall": "25382",
+      "rank": 1,
+      "top1": "25382",
+      "top1Cosine": 0.939
+    },
+    {
+      "recall": "20096",
+      "rank": null,
+      "top1": "14198",
+      "top1Cosine": 0.804
+    },
+    {
+      "recall": "16163",
+      "rank": 1,
+      "top1": "16163",
+      "top1Cosine": 0.977
+    },
+    {
+      "recall": "10053",
+      "rank": null,
+      "top1": "10209",
+      "top1Cosine": 0.83
+    },
+    {
+      "recall": "23123",
+      "rank": null,
+      "top1": "26191",
+      "top1Cosine": 0.742
+    },
+    {
+      "recall": "23766",
+      "rank": null,
+      "top1": "13268",
+      "top1Cosine": 0.891
+    },
+    {
+      "recall": "25215",
+      "rank": 1,
+      "top1": "25215",
+      "top1Cosine": 0.847
+    },
+    {
+      "recall": "11106",
+      "rank": null,
+      "top1": "13156",
+      "top1Cosine": 0.923
+    },
+    {
+      "recall": "10177",
+      "rank": 1,
+      "top1": "10177",
+      "top1Cosine": 0.841
+    },
+    {
+      "recall": "19053",
+      "rank": 1,
+      "top1": "19053",
+      "top1Cosine": 0.878
+    },
+    {
+      "recall": "11014",
+      "rank": 1,
+      "top1": "11014",
+      "top1Cosine": 0.892
+    },
+    {
+      "recall": "26286",
+      "rank": 1,
+      "top1": "26286",
+      "top1Cosine": 0.68
+    },
+    {
+      "recall": "10272",
+      "rank": 1,
+      "top1": "10272",
+      "top1Cosine": 0.921
+    },
+    {
+      "recall": "22080",
+      "rank": null,
+      "top1": "22124",
+      "top1Cosine": 0.872
+    },
+    {
+      "recall": "10302",
+      "rank": null,
+      "top1": "09075",
+      "top1Cosine": 0.845
+    },
+    {
+      "recall": "15069",
+      "rank": 1,
+      "top1": "15069",
+      "top1Cosine": 0.734
+    },
+    {
+      "recall": "13139",
+      "rank": null,
+      "top1": "11161",
+      "top1Cosine": 0.654
+    },
+    {
+      "recall": "24049",
+      "rank": 1,
+      "top1": "24049",
+      "top1Cosine": 0.78
+    },
+    {
+      "recall": "14052",
+      "rank": null,
+      "top1": "13176",
+      "top1Cosine": 0.756
+    },
+    {
+      "recall": "13202",
+      "rank": 3,
+      "top1": "18021",
+      "top1Cosine": 0.871
+    },
+    {
+      "recall": "10057",
+      "rank": null,
+      "top1": "10128",
+      "top1Cosine": 0.786
+    },
+    {
+      "recall": "17215",
+      "rank": 1,
+      "top1": "17215",
+      "top1Cosine": 0.872
+    },
+    {
+      "recall": "11048",
+      "rank": 1,
+      "top1": "11048",
+      "top1Cosine": 0.884
+    },
+    {
+      "recall": "24133",
+      "rank": 1,
+      "top1": "24133",
+      "top1Cosine": 0.826
+    },
+    {
+      "recall": "09219",
+      "rank": null,
+      "top1": "10707",
+      "top1Cosine": 0.78
+    },
+    {
+      "recall": "25245",
+      "rank": null,
+      "top1": "18741",
+      "top1Cosine": 0.71
+    },
+    {
+      "recall": "15198",
+      "rank": null,
+      "top1": "17169",
+      "top1Cosine": 0.788
+    },
+    {
+      "recall": "22027",
+      "rank": 1,
+      "top1": "22027",
+      "top1Cosine": 0.895
+    },
+    {
+      "recall": "21125",
+      "rank": 2,
+      "top1": "20075",
+      "top1Cosine": 0.955
+    },
+    {
+      "recall": "23110",
+      "rank": 1,
+      "top1": "23110",
+      "top1Cosine": 0.881
+    },
+    {
+      "recall": "23170",
+      "rank": 1,
+      "top1": "23170",
+      "top1Cosine": 0.843
+    },
+    {
+      "recall": "21761",
+      "rank": 1,
+      "top1": "21761",
+      "top1Cosine": 0.952
+    },
+    {
+      "recall": "26639",
+      "rank": null,
+      "top1": "26181",
+      "top1Cosine": 0.757
+    },
+    {
+      "recall": "18126",
+      "rank": 1,
+      "top1": "18126",
+      "top1Cosine": 0.824
+    },
+    {
+      "recall": "21048",
+      "rank": null,
+      "top1": "11031",
+      "top1Cosine": 0.634
+    },
+    {
+      "recall": "15002",
+      "rank": 1,
+      "top1": "15002",
+      "top1Cosine": 0.871
+    },
+    {
+      "recall": "23724",
+      "rank": 1,
+      "top1": "23724",
+      "top1Cosine": 0.913
+    },
+    {
+      "recall": "10220",
+      "rank": 1,
+      "top1": "10220",
+      "top1Cosine": 0.876
+    },
+    {
+      "recall": "26564",
+      "rank": null,
+      "top1": "19747",
+      "top1Cosine": 0.733
+    },
+    {
+      "recall": "09226",
+      "rank": 1,
+      "top1": "09226",
+      "top1Cosine": 0.898
+    },
+    {
+      "recall": "26091",
+      "rank": null,
+      "top1": "23048",
+      "top1Cosine": 0.935
+    },
+    {
+      "recall": "24209",
+      "rank": null,
+      "top1": "21706",
+      "top1Cosine": 0.876
+    },
+    {
+      "recall": "14268",
+      "rank": null,
+      "top1": "18194",
+      "top1Cosine": 0.84
+    },
+    {
+      "recall": "20074",
+      "rank": null,
+      "top1": "12279",
+      "top1Cosine": 0.819
+    },
+    {
+      "recall": "11179",
+      "rank": null,
+      "top1": "16756",
+      "top1Cosine": 0.743
+    },
+    {
+      "recall": "16248",
+      "rank": 1,
+      "top1": "16248",
+      "top1Cosine": 0.808
+    },
+    {
+      "recall": "10049",
+      "rank": 1,
+      "top1": "10049",
+      "top1Cosine": 0.894
+    },
+    {
+      "recall": "24233",
+      "rank": 1,
+      "top1": "24233",
+      "top1Cosine": 0.943
+    },
+    {
+      "recall": "19032",
+      "rank": 2,
+      "top1": "25704",
+      "top1Cosine": 0.824
+    },
+    {
+      "recall": "11145",
+      "rank": null,
+      "top1": "08377",
+      "top1Cosine": 0.934
+    },
+    {
+      "recall": "25461",
+      "rank": null,
+      "top1": "18143",
+      "top1Cosine": 0.714
+    },
+    {
+      "recall": "15032",
+      "rank": 1,
+      "top1": "15032",
+      "top1Cosine": 0.921
+    },
+    {
+      "recall": "25040",
+      "rank": null,
+      "top1": "26191",
+      "top1Cosine": 0.685
+    },
+    {
+      "recall": "19112",
+      "rank": null,
+      "top1": "19105",
+      "top1Cosine": 0.846
+    },
+    {
+      "recall": "25031",
+      "rank": null,
+      "top1": "23109",
+      "top1Cosine": 0.876
+    },
+    {
+      "recall": "25008",
+      "rank": null,
+      "top1": "24077",
+      "top1Cosine": 0.829
+    },
+    {
+      "recall": "09207",
+      "rank": null,
+      "top1": "09084",
+      "top1Cosine": 0.918
+    },
+    {
+      "recall": "10276",
+      "rank": null,
+      "top1": "12032",
+      "top1Cosine": 0.627
+    },
+    {
+      "recall": "24152",
+      "rank": 1,
+      "top1": "24152",
+      "top1Cosine": 0.979
+    },
+    {
+      "recall": "26112",
+      "rank": null,
+      "top1": "23078",
+      "top1Cosine": 0.869
+    },
+    {
+      "recall": "20132",
+      "rank": null,
+      "top1": "22083",
+      "top1Cosine": 0.805
+    },
+    {
+      "recall": "10143",
+      "rank": null,
+      "top1": "13242",
+      "top1Cosine": 0.874
+    },
+    {
+      "recall": "26437",
+      "rank": null,
+      "top1": "26112",
+      "top1Cosine": 0.869
+    },
+    {
+      "recall": "14236",
+      "rank": null,
+      "top1": "26081",
+      "top1Cosine": 0.605
+    },
+    {
+      "recall": "26266",
+      "rank": 1,
+      "top1": "26266",
+      "top1Cosine": 0.874
+    },
+    {
+      "recall": "17138",
+      "rank": 1,
+      "top1": "17138",
+      "top1Cosine": 0.799
+    },
+    {
+      "recall": "23746",
+      "rank": null,
+      "top1": "20061",
+      "top1Cosine": 0.831
+    },
+    {
+      "recall": "23048",
+      "rank": null,
+      "top1": "12032",
+      "top1Cosine": 0.619
+    },
+    {
+      "recall": "22749",
+      "rank": 1,
+      "top1": "22749",
+      "top1Cosine": 0.939
+    },
+    {
+      "recall": "18070",
+      "rank": 1,
+      "top1": "18070",
+      "top1Cosine": 0.931
+    },
+    {
+      "recall": "12032",
+      "rank": null,
+      "top1": "09075",
+      "top1Cosine": 0.826
+    },
+    {
+      "recall": "26432",
+      "rank": null,
+      "top1": "10071",
+      "top1Cosine": 0.808
+    },
+    {
+      "recall": "11126",
+      "rank": null,
+      "top1": "14156",
+      "top1Cosine": 0.749
+    },
+    {
+      "recall": "25425",
+      "rank": 1,
+      "top1": "25425",
+      "top1Cosine": 0.888
+    },
+    {
+      "recall": "25222",
+      "rank": null,
+      "top1": "24153",
+      "top1Cosine": 0.894
+    },
+    {
+      "recall": "21102",
+      "rank": 3,
+      "top1": "24114",
+      "top1Cosine": 0.829
+    },
+    {
+      "recall": "25476",
+      "rank": null,
+      "top1": "14198",
+      "top1Cosine": 0.836
+    },
+    {
+      "recall": "25318",
+      "rank": null,
+      "top1": "26342",
+      "top1Cosine": 0.818
+    },
+    {
+      "recall": "15057",
+      "rank": null,
+      "top1": "10142",
+      "top1Cosine": 0.731
+    },
+    {
+      "recall": "14069",
+      "rank": 1,
+      "top1": "14069",
+      "top1Cosine": 0.738
+    },
+    {
+      "recall": "26302",
+      "rank": 1,
+      "top1": "26302",
+      "top1Cosine": 0.811
+    },
+    {
+      "recall": "13749",
+      "rank": 3,
+      "top1": "15002",
+      "top1Cosine": 0.809
+    },
+    {
+      "recall": "23237",
+      "rank": 1,
+      "top1": "23237",
+      "top1Cosine": 0.979
+    },
+    {
+      "recall": "23250",
+      "rank": null,
+      "top1": "10141",
+      "top1Cosine": 0.725
+    },
+    {
+      "recall": "12131",
+      "rank": 1,
+      "top1": "12131",
+      "top1Cosine": 0.753
+    },
+    {
+      "recall": "15233",
+      "rank": null,
+      "top1": "15714",
+      "top1Cosine": 0.86
+    },
+    {
+      "recall": "17197",
+      "rank": 1,
+      "top1": "17197",
+      "top1Cosine": 0.759
+    },
+    {
+      "recall": "19135",
+      "rank": null,
+      "top1": "12032",
+      "top1Cosine": 0.645
+    },
+    {
+      "recall": "26171",
+      "rank": null,
+      "top1": "26168",
+      "top1Cosine": 0.599
+    },
+    {
+      "recall": "25131",
+      "rank": 1,
+      "top1": "25131",
+      "top1Cosine": 0.944
+    },
+    {
+      "recall": "26487",
+      "rank": null,
+      "top1": "25150",
+      "top1Cosine": 0.737
+    },
+    {
+      "recall": "21725",
+      "rank": null,
+      "top1": "10272",
+      "top1Cosine": 0.513
+    },
+    {
+      "recall": "25054",
+      "rank": 1,
+      "top1": "25054",
+      "top1Cosine": 0.9
+    },
+    {
+      "recall": "12205",
+      "rank": null,
+      "top1": "22710",
+      "top1Cosine": 0.89
+    },
+    {
+      "recall": "16219",
+      "rank": 1,
+      "top1": "16219",
+      "top1Cosine": 0.918
+    },
+    {
+      "recall": "19044",
+      "rank": 1,
+      "top1": "19044",
+      "top1Cosine": 0.933
+    },
+    {
+      "recall": "17734",
+      "rank": null,
+      "top1": "24183",
+      "top1Cosine": 0.696
+    },
+    {
+      "recall": "09168",
+      "rank": 1,
+      "top1": "09168",
+      "top1Cosine": 0.813
+    },
+    {
+      "recall": "23106",
+      "rank": 1,
+      "top1": "23106",
+      "top1Cosine": 0.96
+    },
+    {
+      "recall": "22722",
+      "rank": null,
+      "top1": "11191",
+      "top1Cosine": 0.612
+    },
+    {
+      "recall": "14161",
+      "rank": null,
+      "top1": "13176",
+      "top1Cosine": 0.681
+    },
+    {
+      "recall": "15730",
+      "rank": 1,
+      "top1": "15730",
+      "top1Cosine": 0.874
+    },
+    {
+      "recall": "16006",
+      "rank": null,
+      "top1": "12032",
+      "top1Cosine": 0.632
+    },
+    {
+      "recall": "14257",
+      "rank": 2,
+      "top1": "18012",
+      "top1Cosine": 0.71
+    },
+    {
+      "recall": "13079",
+      "rank": 1,
+      "top1": "13079",
+      "top1Cosine": 0.881
+    },
+    {
+      "recall": "18109",
+      "rank": null,
+      "top1": "26191",
+      "top1Cosine": 0.716
+    },
+    {
+      "recall": "22103",
+      "rank": 1,
+      "top1": "22103",
+      "top1Cosine": 0.897
+    },
+    {
+      "recall": "15052",
+      "rank": null,
+      "top1": "17060",
+      "top1Cosine": 0.786
+    },
+    {
+      "recall": "24291",
+      "rank": null,
+      "top1": "17124",
+      "top1Cosine": 0.809
+    },
+    {
+      "recall": "25228",
+      "rank": null,
+      "top1": "25312",
+      "top1Cosine": 0.828
+    },
+    {
+      "recall": "19128",
+      "rank": null,
+      "top1": "23111",
+      "top1Cosine": 0.858
+    },
+    {
+      "recall": "09071",
+      "rank": 1,
+      "top1": "09071",
+      "top1Cosine": 0.87
+    },
+    {
+      "recall": "14084",
+      "rank": 1,
+      "top1": "14084",
+      "top1Cosine": 0.655
+    },
+    {
+      "recall": "26655",
+      "rank": 1,
+      "top1": "26655",
+      "top1Cosine": 0.95
+    },
+    {
+      "recall": "14192",
+      "rank": 1,
+      "top1": "14192",
+      "top1Cosine": 0.896
+    },
+    {
+      "recall": "08316",
+      "rank": 1,
+      "top1": "08316",
+      "top1Cosine": 0.938
+    },
+    {
+      "recall": "22129",
+      "rank": null,
+      "top1": "16734",
+      "top1Cosine": 0.879
+    },
+    {
+      "recall": "23138",
+      "rank": 1,
+      "top1": "23138",
+      "top1Cosine": 0.876
+    },
+    {
+      "recall": "16199",
+      "rank": 1,
+      "top1": "16199",
+      "top1Cosine": 0.76
+    },
+    {
+      "recall": "24289",
+      "rank": 1,
+      "top1": "24289",
+      "top1Cosine": 0.93
+    },
+    {
+      "recall": "24183",
+      "rank": null,
+      "top1": "13268",
+      "top1Cosine": 0.828
+    },
+    {
+      "recall": "23731",
+      "rank": null,
+      "top1": "21156",
+      "top1Cosine": 0.868
+    },
+    {
+      "recall": "16268",
+      "rank": null,
+      "top1": "10142",
+      "top1Cosine": 0.725
+    },
+    {
+      "recall": "11288",
+      "rank": null,
+      "top1": "15196",
+      "top1Cosine": 0.929
+    },
+    {
+      "recall": "13167",
+      "rank": null,
+      "top1": "26309",
+      "top1Cosine": 0.756
+    },
+    {
+      "recall": "26569",
+      "rank": 1,
+      "top1": "26569",
+      "top1Cosine": 0.824
+    },
+    {
+      "recall": "26101",
+      "rank": 1,
+      "top1": "26101",
+      "top1Cosine": 0.905
+    },
+    {
+      "recall": "17124",
+      "rank": null,
+      "top1": "21735",
+      "top1Cosine": 0.696
+    },
+    {
+      "recall": "21156",
+      "rank": 1,
+      "top1": "21156",
+      "top1Cosine": 0.953
+    },
+    {
+      "recall": "23100",
+      "rank": 1,
+      "top1": "23100",
+      "top1Cosine": 0.888
+    },
+    {
+      "recall": "15093",
+      "rank": null,
+      "top1": "09269",
+      "top1Cosine": 0.62
+    },
+    {
+      "recall": "22124",
+      "rank": 2,
+      "top1": "18097",
+      "top1Cosine": 0.891
+    },
+    {
+      "recall": "16135",
+      "rank": null,
+      "top1": "18225",
+      "top1Cosine": 0.836
+    },
+    {
+      "recall": "13284",
+      "rank": null,
+      "top1": "23707",
+      "top1Cosine": 0.518
+    }
+  ]
+}
