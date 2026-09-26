@@ -1,0 +1,35 @@
+name: probe
+
+# Live probe of the judged deployment (PLAN 2.1). Stays ON through judging. Offset minutes because
+# GitHub deprioritizes :00 and */N schedules; judge freshness by the newest run's age, not by green runs.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Real recall check, stats and health answer from production
+        env:
+          BASE: https://secondhand-safe-web.vercel.app
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          base = os.environ["BASE"]
+          def get(p):
+              with urllib.request.urlopen(base + p, timeout=30) as r:
+                  assert r.status == 200, (p, r.status)
+                  return json.loads(r.read())
+          v = get("/api/check?model=BHC001&batch=202408")["verdict"]
+          assert v["kind"] == "RECALL_MATCH" and v["recall"]["recallNumber"] == "26061", v
+          assert get("/api/check?model=BHC001&batch=202511")["verdict"]["kind"] == "NEEDS_CHECK"
+          s = get("/api/stats")
+          assert s["recallIndex"]["recalls"] > 1000 and s["classifier"]["macroF1"] > s["classifier"]["zeroShotMacroF1"], s
+          h = get("/api/health")
+          assert h["ok"] is True, h
+          with urllib.request.urlopen(base + "/", timeout=30) as r:
+              assert b"SecondHand Safe" in r.read()
+          print("probe ok", h["integrations"])
+          PY
