@@ -9,7 +9,7 @@ describe("deal store without a database degrades, never throws", () => {
     vi.stubEnv("MONGODB_URI", "");
     expect(await recordHold({ dealId: "shs-x", listing: "t", amountUsd: 1, card: null, agent: null })).toBe(false);
     expect(await recordSettlement("shs-x", { status: "CAPTURED", verdict: { kind: "NO_MATCH", reason: "r" } })).toBe(false);
-    expect(await getDeal("shs-x")).toBeUndefined();
+    expect(await getDeal("shs-x")).toEqual({ state: "unavailable" });
     expect(await board()).toBeNull();
   });
   it("the deal and QR endpoints only accept our deal id shape", async () => {

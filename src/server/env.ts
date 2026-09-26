@@ -34,7 +34,7 @@ const schema = z.object({
   VISA_SECRET_KEY: z.string().min(1),
   VISA_HOST: z.string().default("apitest.cybersource.com"),
   MONGODB_URI: z.string().min(1),
-  MONGODB_DB: z.string().default("secondhand_safe"),
+  MONGODB_DB: z.string().default("lullabuy"),
   GEMINI_API_KEY: z.string().min(1),
   ELEVENLABS_API_KEY: z.string().optional(),
   TAP_AGENT_PRIVATE_KEY_HEX: z.string().length(64),
