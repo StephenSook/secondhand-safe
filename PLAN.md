@@ -152,10 +152,10 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 |---|---|---|---|---|---|---|
 | 5.1 | Live probe: red since the rebrand (it grepped the old name); now both origins + Atlas deals + MCP | `.github/workflows/probe.yml` | **Stephen** | ✅ | n/a | PR #24 merged; both origins green (verified by hand and in Actions). |
 | 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | ✅ | 3.11 | PR #32 merged + deployed; verified live (POST embedding and GET ?listingId=). Held-out eval: right recall first 60/144 (41.7%), top-3 68/144 (47.2%), reproducible (ml/sample_second_photos.py + scripts/eval-lookalike.mjs). Reviewed by Claude + Grok. Resemblance never flags anything. |
-| 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Not started. /board polls every 3 s, which works for the demo. |
+| 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ✅ | 3.11 | Done as 6.3 (PR #38). |
 | 5.4 | Hold sweeper: Vercel cron reverses holds past their window; the board shows RELEASED | `src/app/api/cron/**`, `vercel.json` | **Stephen** | ✅ | 1.5 | PR #28 merged + deployed. Daily Vercel cron 13:17 UTC (9:17 AM ET). 3 review rounds (Claude x2, Grok). Verified live: 401 without CRON_SECRET, 200 with it. |
-| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11, 3.12 | Not started (needs label fields stored per deal + web push). |
-| 5.6 | ElevenLabs conversational shopping agent (Agents Platform) with a server tool calling `/api/shop`, EN + ES | `src/ui/VoiceAgent.tsx`, `scripts/elevenlabs-agent.mjs` | **Stephen** | 🟡 | 2.7 | PR #27 open. Agent live on ElevenLabs (agent_8801m3fcg0refz5bv8znkf1a1vr6, 180 s cap, auth allowlist). Codex rounds 1-3 fixed; round 4 running. Merge after a clean round. |
+| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ✅ | 3.11, 3.12 | Done as 6.2 (PR #37). |
+| 5.6 | ElevenLabs conversational shopping agent (Agents Platform) with a server tool calling `/api/shop`, EN + ES | `src/ui/VoiceAgent.tsx`, `scripts/elevenlabs-agent.mjs` | **Stephen** | ✅ | 2.7 | PR #27 merged + deployed. 10 Codex rounds; live: signed session URL for our pages, 403 cross-site, webhook 200 with the secret and 401 without. |
 | 5.7 | Solana passport as a Metaplex Core asset with Attributes (verdict, index date, record hash), updated on recall | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | Not started. Memo passport (3.12) is live and verifiable. |
 | 5.8 | `/trust` Trust and Safety console: reversals by reason, disputes avoided, flag trend, drawn with Visa Chart Components | `src/app/trust/**` | **Stephen** | ✅ | 5.3 | PR #30 merged + deployed: /trust and /api/trust, live from Atlas, says plainly the deals are our demos and e2e tests. |
 | 5.9 | "Without vs With" replay: the same deal on a cash marketplace vs a held Visa payment | `src/app/board/**` | **Stephen** | ⬜ | 5.3 | Not started. |
@@ -174,9 +174,9 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
-| 6.1 | Merge the voice agent (#27) after a clean review round; prove it end to end with ElevenLabs' simulated conversation (the agent calls our live webhook) | `src/ui/VoiceAgent.tsx` | **Stephen** | 🟡 | 5.6 | 8 Codex rounds so far; every finding fixed and tested. |
-| 6.2 | Recall watch: store the label fields at settlement; a labelled replay of a real CPSC recall re-checks every captured deal, marks "recalled after sale" on the deal, board, seller view and /trust, and pushes a notification to a subscribed browser | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11 | The Visa post-purchase stage. The replay is labelled as a replay on screen. |
-| 6.3 | MongoDB change stream -> SSE -> /board updates the moment a deal changes | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Replaces 3 s polling (polling stays as the fallback). |
+| 6.1 | Merge the voice agent (#27) after a clean review round; prove it end to end with ElevenLabs' simulated conversation (the agent calls our live webhook) | `src/ui/VoiceAgent.tsx` | **Stephen** | ✅ | 5.6 | Merged + deployed; verified live (see 5.6). |
+| 6.2 | Recall watch: store the label fields at settlement; a labelled replay of a real CPSC recall re-checks every captured deal, marks "recalled after sale" on the deal, board, seller view and /trust, and pushes a notification to a subscribed browser | `src/server/watch/**`, `public/sw.js` | **Stephen** | ✅ | 3.11 | PR #37 merged + deployed (Grok review fixed: simulation counts only, only your own sale is notified, labels never public, failed pushes retried). Live: prod e2e captured 2 sales, simulate ZZT9Q41X -> 2 affected. |
+| 6.3 | MongoDB change stream -> SSE -> /board updates the moment a deal changes | `src/app/api/stream/route.ts` | **Stephen** | ✅ | 3.11 | PR #38 merged + deployed: Atlas change stream -> SSE, polling fallback; live test: events in 30-280 ms, no Visa ids. |
 | 6.4 | Solana passport as a Metaplex Core asset with on-chain Attributes, updated by the recall watch | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | Memo stays as the audit trail. |
 | 6.5 | Server-side one-active-hold per buyer (signed browser id + atomic Atlas claim) and Atlas-backed rate limits (today both are per tab / per server instance) | `src/app/api/checkout/**` | **Stephen** | ⬜ | 1.5 | Money path: adversarial review before merge. |
 | 6.6 | TestFlight upload of the signed iOS build | `mobile/**` | **Stephen** | ⛔ | H8 | Needs the App Store Connect app record (H8). |
@@ -215,7 +215,6 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 | PR | What | State | Merge rule |
 |---|---|---|---|
-| #27 | ElevenLabs voice agent on /shop + duplicate-hold guard | Codex round 5 running (rounds 1-4 fixed) | merge only after a clean review round and green CI |
 
 Deploys are manual (no Git auto-deploy): from a clean `git worktree add --detach <dir> origin/main`, copy `.vercel/`,
 check `projectName` is `secondhand-safe-web`, then `npx vercel --prod --yes`. Verify with the probe (both origins).
@@ -296,4 +295,4 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 5. Secrets never in git: `.env.local` only, plus Vercel and GitHub secrets.
 6. Every number in the README, `/judge`, the video or Devpost comes from `docs/FACTS.json`.
 
-_Last updated: 2026-09-26 15:30 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
+_Last updated: 2026-09-26 17:15 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
