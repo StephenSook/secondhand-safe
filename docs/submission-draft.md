@@ -20,6 +20,9 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 
 ## What it does
 
+0. **Find it.** The parent says or types what they need ("a bassinet for my newborn under $80, pickup in
+   Atlanta"). Gemini turns that into a search over 1662 real listings we scanned, and every result comes back
+   already checked: red ones cannot be bought, amber ones need a look at pickup. Our agent can then buy for them.
 1. **Agree and hold.** The buyer agrees on a price and types their card into Visa's own Microform fields.
    Lullabuy asks Visa to authorize it with capture off. The money is held, not sent.
 2. **Meet and scan.** At pickup, the buyer photographs the label. The barcode is read on the phone, the label
@@ -48,6 +51,10 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 - **Recall index:** 6036 CPSC recalls pulled from the CPSC API, 1137 kept as nursery and children's products,
   plus 71 NHTSA child restraint campaigns. Two hand checks of 20 records each found three extraction bugs,
   which we fixed and wrote up in `data/handcheck.md`.
+- **Gemini shopping agent:** Gemini 3.5 Flash turns a spoken or typed request into filters over our scanned
+  listings. It never decides what is allowed; the recall index, our model and our own review do, and the
+  server refuses to let the agent buy a red listing. In production Gemini runs with no stored key: Vercel's
+  identity token is exchanged with Google Workload Identity Federation for a short-lived token.
 - **Gemini:** Gemini 3.5 Flash reads the product label photo into brand, model, batch and date with a box for
   each field. It also read all 1137 recall notices for model numbers, batches and UPCs. A value is kept only
   if it appears word for word in that recall's text, which raised the recalls we can match on from 449 to 822.
@@ -88,12 +95,27 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 
 ## What we learned
 
-TODO (Stephen and Tylin): write this one yourselves. Judges weigh it; do not leave it empty.
+DRAFT (written from what actually happened this weekend; Stephen and Tylin, rewrite it in your own words):
+
+- The danger is not where we first looked. We expected banned sleepers all over eBay. Our scan of 1662 real
+  listings found about one. The big marketplaces already filter the text they can read. The problem is at the
+  handoff, when cash or a card moves for an item nobody has looked at closely.
+- A model is only as good as the mistakes you feed back. Our first pass on real listings flagged crib skirts
+  and dollhouse furniture. We reviewed every flag by hand, added the false alarms to training, and the flags
+  went from 39 to 9 without touching the test set.
+- Money code needs someone trying to break it. Review rounds found bugs our tests did not, like model numbers
+  such as "4340" that several brands share, and brand names like "Summer" and "Gap" that show up in ordinary
+  listing text. We changed the rule so a short number never moves money on its own.
+- Visa's hold is the right tool. Authorize with capture off, then capture or reverse, is how hotels and gas
+  pumps already work, and it fits a parking-lot sale exactly.
+- You can use a cloud model without a stored key. Our server proves who it is to Google with a short-lived
+  identity token, so there is no Gemini key sitting in our settings.
 
 ## What's next
 
 - Seller-side confirmation of the scan (today the buyer's device reports it).
-- A deal board on MongoDB Atlas and a Solana item passport.
+- A deal board on MongoDB Atlas. (The Solana item passport is built and waiting on devnet SOL: TODO, claim it
+  only if a real passport transaction exists on submission day.)
 - Bring the check to Facebook Marketplace handoffs, where the problem is worst.
 
 ## Try it

@@ -4,6 +4,7 @@ import { visaCreds } from "@/server/visa/creds";
 import { verifyDealToken } from "@/server/deals/token";
 import { settle } from "@/server/deals/settle";
 import type { ProductClass } from "@/core/verdict";
+import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 
@@ -30,8 +31,24 @@ export async function POST(request: Request) {
     cls: cls && CLASSES.includes(cls.cls as ProductClass) && typeof cls.p === "number" ? { cls: cls.cls as ProductClass, p: cls.p } : undefined,
   });
   const out = await settle(creds, deal, verdict);
+  // Item passport: only for a completed sale. The record holds no personal data; only its hash goes on chain.
+  let passport: { signature: string; path: string } | { error: string } | undefined;
+  const sol = process.env.SOLANA_SECRET_KEY_B58?.trim();
+  if (out.status === "CAPTURED" && sol) {
+    const record = JSON.stringify({
+      v: 1, dealId: deal.dealId, amountUsd: deal.amountUsd, verdict: verdict.kind, reason: verdict.reason, indexAsOf: verdict.asOf,
+      label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null },
+      visaCapture: out.visa?.id ?? null, at: new Date().toISOString(),
+    });
+    try {
+      const signature = await anchor(sol, passportMemo(deal.dealId, recordHash(record)));
+      passport = { signature, path: `/passport/${signature}?r=${Buffer.from(record).toString("base64url")}` };
+    } catch (e) {
+      passport = { error: `Passport not written: ${(e as Error).message}` };
+    }
+  }
   return Response.json({
-    dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict,
+    dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
     visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },
     at: new Date().toISOString(),
   }, { headers: { "cache-control": "no-store" } });

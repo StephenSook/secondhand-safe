@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/#oracle", label: "The model" },
   { href: "/map", label: "Atlanta scan" },
   { href: "/atlas", label: "Model's view" },
+  { href: "/shop", label: "Shop" },
   { href: "/pickup", label: "Pickup scan" },
   { href: "/judge", label: "Judges" },
 ];
