@@ -1,0 +1,221 @@
+{
+ "what": "CLIP ViT-B/32 fine-tuned: last 2 vision blocks + layer norm + projection + linear head, 8 epochs, augmentation, balanced loss, seed 13, device mps",
+ "train_n": 325,
+ "held_out_n": 171,
+ "macro_f1": 0.7469,
+ "macro_f1_ci95": [
+  0.6258,
+  0.8329
+ ],
+ "false_alarms_on_ordinary": 0,
+ "ordinary_held_out": 107,
+ "confusion": [
+  [
+   5,
+   0,
+   0,
+   4
+  ],
+  [
+   0,
+   9,
+   1,
+   14
+  ],
+  [
+   0,
+   0,
+   23,
+   8
+  ],
+  [
+   0,
+   0,
+   0,
+   107
+  ]
+ ],
+ "shipped_systems_same_held_out": {
+  "zero_shot": {
+   "macro_f1": 0.558,
+   "macro_f1_ci95": [
+    0.4777,
+    0.6331
+   ],
+   "accuracy": 0.6433,
+   "per_class": {
+    "inclined_or_inbed_sleeper": {
+     "precision": 0.1154,
+     "recall": 0.3333,
+     "f1": 0.1714,
+     "n": 9
+    },
+    "crib_bumper": {
+     "precision": 0.439,
+     "recall": 0.75,
+     "f1": 0.5538,
+     "n": 24
+    },
+    "drop_side_crib": {
+     "precision": 1.0,
+     "recall": 0.6452,
+     "f1": 0.7843,
+     "n": 31
+    },
+    "other": {
+     "precision": 0.8214,
+     "recall": 0.6449,
+     "f1": 0.7225,
+     "n": 107
+    }
+   },
+   "confusion": [
+    [
+     3,
+     1,
+     0,
+     5
+    ],
+    [
+     2,
+     18,
+     0,
+     4
+    ],
+    [
+     0,
+     5,
+     20,
+     6
+    ],
+    [
+     21,
+     17,
+     0,
+     69
+    ]
+   ]
+  },
+  "clip_head": {
+   "macro_f1": 0.7243,
+   "macro_f1_ci95": [
+    0.6017,
+    0.8127
+   ],
+   "accuracy": 0.8246,
+   "per_class": {
+    "inclined_or_inbed_sleeper": {
+     "precision": 0.8333,
+     "recall": 0.5556,
+     "f1": 0.6667,
+     "n": 9
+    },
+    "crib_bumper": {
+     "precision": 0.8333,
+     "recall": 0.4167,
+     "f1": 0.5556,
+     "n": 24
+    },
+    "drop_side_crib": {
+     "precision": 0.9545,
+     "recall": 0.6774,
+     "f1": 0.7925,
+     "n": 31
+    },
+    "other": {
+     "precision": 0.8015,
+     "recall": 0.9813,
+     "f1": 0.8824,
+     "n": 107
+    }
+   },
+   "confusion": [
+    [
+     5,
+     0,
+     0,
+     4
+    ],
+    [
+     1,
+     10,
+     1,
+     12
+    ],
+    [
+     0,
+     0,
+     21,
+     10
+    ],
+    [
+     0,
+     2,
+     0,
+     105
+    ]
+   ]
+  },
+  "dino_head": {
+   "macro_f1": 0.7618,
+   "macro_f1_ci95": [
+    0.658,
+    0.8409
+   ],
+   "accuracy": 0.8538,
+   "per_class": {
+    "inclined_or_inbed_sleeper": {
+     "precision": 1.0,
+     "recall": 0.6667,
+     "f1": 0.8,
+     "n": 9
+    },
+    "crib_bumper": {
+     "precision": 0.8889,
+     "recall": 0.3333,
+     "f1": 0.4848,
+     "n": 24
+    },
+    "drop_side_crib": {
+     "precision": 0.8667,
+     "recall": 0.8387,
+     "f1": 0.8525,
+     "n": 31
+    },
+    "other": {
+     "precision": 0.8413,
+     "recall": 0.9907,
+     "f1": 0.9099,
+     "n": 107
+    }
+   },
+   "confusion": [
+    [
+     6,
+     0,
+     0,
+     3
+    ],
+    [
+     0,
+     8,
+     4,
+     12
+    ],
+    [
+     0,
+     0,
+     26,
+     5
+    ],
+    [
+     0,
+     1,
+     0,
+     106
+    ]
+   ]
+  }
+ },
+ "seconds": 45
+}

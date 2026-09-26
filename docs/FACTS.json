@@ -1,5 +1,5 @@
 {
- "asOf": "2026-09-26T12:00:21+00:00",
+ "asOf": "2026-09-26T14:39:29+00:00",
  "scanned": 1662,
  "scannedBySource": {
   "ebay": 1049,
@@ -39,6 +39,18 @@
   "falseAlarmsZeroShot": 38,
   "ordinaryHeldOut": 107,
   "embeddings": "transformers.js q8 (shipped runtime)"
+ },
+ "fineTuneExperiment": {
+  "what": "CLIP ViT-B/32 fine-tuned: last 2 vision blocks + layer norm + projection + linear head, 8 epochs, augmentation, balanced loss, seed 13, device mps",
+  "macroF1": 0.7469,
+  "macroF1Ci95": [
+   0.6258,
+   0.8329
+  ],
+  "falseAlarmsOnOrdinary": 0,
+  "ordinaryHeldOut": 107,
+  "shipped": false,
+  "why": "within the confidence interval of the shipped head; shipping it would mean a custom 90 MB model on the phone"
  },
  "recallIndex": {
   "recallsFetched": 6036,

@@ -25,6 +25,11 @@ describe("README numbers come from FACTS.json", () => {
     expect(row("Off-the-shelf CLIP")).toContain(String(c.zeroShotMacroF1));
     expect(row("Ordinary items wrongly flagged")).toContain(`${c.falseAlarmsOnOrdinary} vs ${c.falseAlarmsZeroShot} (of ${c.ordinaryHeldOut})`);
   });
+  it("fine-tune experiment", () => {
+    const f = facts.fineTuneExperiment!;
+    expect(row("Deep fine-tune of CLIP")).toContain(`${f.macroF1} (${f.macroF1Ci95[0]} to ${f.macroF1Ci95[1]}), ${f.falseAlarmsOnOrdinary} of ${f.ordinaryHeldOut}`);
+    expect(f.shipped).toBe(false);
+  });
   it("scan rounds", () => {
     const r = facts.scanRounds;
     expect(row("Listing scan flags")).toContain(`${r[0].flags} then ${r[r.length - 1].flags}`);

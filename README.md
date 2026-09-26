@@ -45,6 +45,7 @@ MCP config for a client that speaks Streamable HTTP:
 | Off-the-shelf CLIP zero-shot on the same held-out set | 0.558 |
 | Ordinary items wrongly flagged, ours vs zero-shot | 2 vs 38 (of 107) |
 | Listing scan flags, round 1 then round 2 | 39 then 9 |
+| Deep fine-tune of CLIP's last 2 blocks, same held-out set (experiment, not shipped) | 0.7469 (0.6258 to 0.8329), 0 of 107 false alarms |
 
 The held-out set contains only products the model never saw: no CPSC recall and no marketplace listing
 appears on both sides of the split (`ml/train.py`, checked in CI). Every scan flag was reviewed by eye
