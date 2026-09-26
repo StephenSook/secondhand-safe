@@ -56,7 +56,7 @@ export function DealLive({ dealId }: { dealId: string }) {
         ))}
       </ol>
       <p className="text-xs font-semibold text-ink/60">
-        Paid by {d.card === "microform" ? "a card entered in Visa Microform" : "Visa's sandbox test card"}
+        Paid by {d.card === "microform" ? "a card entered in Visa Microform" : d.card === "saved-card" ? "a saved card (Visa Token Management Service)" : "Visa's sandbox test card"}
         {d.agent ? `, bought by our agent (Trusted Agent Protocol key ${d.agent})` : ""}. Visa is the record of the
         money; this page mirrors it.
       </p>

@@ -16,11 +16,14 @@ type Deal = {
   dealId: string; listing: string; amountUsd: number; token: string; authId: string;
   status: "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN"; settlementId?: string; reason?: string; at: string;
   /** which card Visa held: the parent's Microform entry, or the sandbox test card (agent path, or no fields) */
-  card?: "microform" | "sandbox-test-card";
+  card?: "microform" | "sandbox-test-card" | "saved-card";
   /** Solana devnet item passport written at capture: a link to verify it, or why it was not written */
   passportPath?: string; passportError?: string;
+  /** a Visa card-linked offer applied at authorization (the hold is the discounted amount) */
+  promotion?: { description: string; discountUsd: number; receipt: string }; askedUsd?: number;
 };
 const DEAL_KEY = "shs-deal";
+const SAVED_KEY = "lullabuy-saved-card";
 const LISTINGS = DEMO_TABLE;
 const CLASS_NAME: Record<string, string> = {
   inclined_or_inbed_sleeper: "infant sleeper", crib_bumper: "crib bumper", drop_side_crib: "drop-side crib", other: "no banned type",
@@ -62,6 +65,11 @@ export function PickupScanner() {
   const [dealErr, setDealErr] = useState("");
   const [pick, setPick] = useState(0);
   const [card, setCard] = useState<CardState>({ state: "loading" });
+  // Visa Token Management Service: this browser keeps only our signed wrapper around Visa's customer token
+  const [saved, setSaved] = useState<{ token: string; masked: string } | null>(null);
+  const [useSaved, setUseSaved] = useState(true);
+  const [saveCard, setSaveCard] = useState(false);
+  const forgetSaved = () => { try { localStorage.removeItem(SAVED_KEY); } catch {} setSaved(null); };
   const decisionRef = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const dealRef = useRef<Deal | null>(null);
@@ -71,8 +79,10 @@ export function PickupScanner() {
   useEffect(() => {
     fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
     try {
-      const saved = sessionStorage.getItem(DEAL_KEY);
-      if (saved) window.setTimeout(() => setDeal(JSON.parse(saved) as Deal), 0);
+      const savedDeal = sessionStorage.getItem(DEAL_KEY);
+      if (savedDeal) window.setTimeout(() => setDeal(JSON.parse(savedDeal) as Deal), 0);
+      const savedCardJson = localStorage.getItem(SAVED_KEY);
+      if (savedCardJson) window.setTimeout(() => setSaved(JSON.parse(savedCardJson)), 0);
     } catch {}
   }, []);
 
@@ -110,16 +120,27 @@ export function PickupScanner() {
 
   async function startDeal() {
     setDealErr("");
-    if (card.state === "loading") return setDealErr("Visa's card fields are still loading.");
-    setBusy(card.state === "ready" ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
+    const usingSaved = !!(useSaved && saved);
+    if (!usingSaved && card.state === "loading") return setDealErr("Visa's card fields are still loading.");
+    setBusy(!usingSaved && card.state === "ready" ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
     try {
-      const transientTokenJwt = card.state === "ready" ? await card.tokenize() : undefined;
+      const transientTokenJwt = !usingSaved && card.state === "ready" ? await card.tokenize() : undefined;
       setBusy("Asking Visa to authorize and hold…");
       const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd, transientTokenJwt }) });
+        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd,
+          ...(usingSaved ? { savedCard: saved!.token } : { transientTokenJwt, saveCard: !!transientTokenJwt && saveCard }) }) });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card });
+      if (!r.ok) {
+        if (usingSaved && r.status === 400) { forgetSaved(); }
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      if (j.savedCard) {
+        const next = { token: j.savedCard as string, masked: String(j.savedMasked ?? "card") };
+        try { localStorage.setItem(SAVED_KEY, JSON.stringify(next)); } catch {}
+        setSaved(next);
+      }
+      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card,
+        promotion: j.promotion, askedUsd: j.askedUsd });
       setVerdict(null);
     } catch (e) {
       setDealErr((e as Error).message);
@@ -301,9 +322,24 @@ export function PickupScanner() {
                   </label>
                 ))}
               </div>
-              <CardFields onState={setCard} />
+              {saved && (
+                <div className="mt-4 rounded-2xl border-2 border-ink bg-paper/70 p-3 text-sm font-bold grid gap-2">
+                  <label className="flex items-center gap-2"><input type="radio" name="cardsrc" checked={useSaved} onChange={() => setUseSaved(true)} />
+                    Use my saved card {saved.masked.slice(-4) ? `ending ${saved.masked.slice(-4)}` : ""} (Visa Token Management Service)</label>
+                  <label className="flex items-center gap-2"><input type="radio" name="cardsrc" checked={!useSaved} onChange={() => setUseSaved(false)} />
+                    Enter a card</label>
+                  <button type="button" onClick={forgetSaved} className="justify-self-start underline text-xs">Forget the saved card on this device</button>
+                </div>
+              )}
+              {(!saved || !useSaved) && <CardFields onState={setCard} />}
+              {(!saved || !useSaved) && (
+                <label className="mt-2 flex items-center gap-2 text-sm font-bold">
+                  <input type="checkbox" checked={saveCard} onChange={(e) => setSaveCard(e.target.checked)} />
+                  Save this card with Visa for next time (the card stays in Visa&apos;s vault; this browser keeps a signed token)
+                </label>
+              )}
               <div className="mt-4 flex flex-wrap gap-3">
-                <SquashButton onClick={startDeal} disabled={!!busy || card.state === "loading"} accent="var(--amber)">Agree and hold the payment</SquashButton>
+                <SquashButton onClick={startDeal} disabled={!!busy || (!(saved && useSaved) && card.state === "loading")} accent="var(--amber)">Agree and hold the payment</SquashButton>
                 <SquashButton onClick={() => agentBuy(false)} disabled={!!busy} bg="var(--visa)" accent="var(--aqua)">Let our agent buy it</SquashButton>
               </div>
               <button type="button" onClick={() => agentBuy(true)} disabled={!!busy} className="mt-3 text-sm font-bold underline decoration-2 underline-offset-4">
@@ -316,10 +352,15 @@ export function PickupScanner() {
             <>
               <p className="display text-5xl mt-1">{deal.status}</p>
               <p className="mt-1 display text-2xl">${deal.amountUsd.toFixed(2)}</p>
+              {deal.promotion && (
+                <p className="mt-1 rounded-xl border-2 border-ink bg-paper text-ink px-3 py-2 text-sm font-bold">
+                  Visa card offer applied: {deal.promotion.description} (saved ${deal.promotion.discountUsd.toFixed(2)}{deal.askedUsd ? ` of $${deal.askedUsd.toFixed(2)}` : ""}). {deal.promotion.receipt}
+                </p>
+              )}
               <p className="mt-1 font-semibold opacity-80">{deal.listing}</p>
               <dl className="mt-3 text-xs font-mono grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 opacity-90">
                 <dt>authorization</dt><dd className="break-all">{deal.authId}</dd>
-                {deal.card && <><dt>card</dt><dd>{deal.card === "microform" ? "entered in Visa Microform (tokenized)" : "Visa sandbox test card"}</dd></>}
+                {deal.card && <><dt>card</dt><dd>{deal.card === "microform" ? "entered in Visa Microform (tokenized)" : deal.card === "saved-card" ? "saved card (Visa Token Management Service)" : "Visa sandbox test card"}</dd></>}
                 {deal.settlementId && (deal.status === "CAPTURED" || deal.status === "REVERSED") && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
                 <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
                 {deal.passportPath && <><dt>passport</dt><dd><a href={deal.passportPath} className="underline font-bold">Solana devnet record</a></dd></>}

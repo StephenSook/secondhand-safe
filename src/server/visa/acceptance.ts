@@ -16,6 +16,10 @@ export interface VisaResult {
   /** true only when Visa's JSON body was read and carried a status */
   parsed: boolean;
   raw: unknown;
+  /** what Visa actually authorized (can be less than asked, e.g. after a card-linked promotion) */
+  authorizedUsd?: number;
+  /** a Visa card-linked offer applied at authorization */
+  promotion?: { description: string; discountUsd: number; receipt: string };
 }
 
 export function signedHeaders(creds: VisaCreds, method: "GET" | "POST", path: string, body: string, date = new Date().toUTCString()) {
@@ -54,16 +58,34 @@ async function post(creds: VisaCreds, path: string, payload: object, op: keyof t
   } catch (e) {
     return { ok: false, status: "NETWORK_ERROR", httpStatus: 0, reason: (e as Error).name, parsed: false, raw: null };
   }
-  const raw = (await res.json().catch(() => ({}))) as { id?: string; status?: string; errorInformation?: { reason?: string; message?: string }; reason?: string; message?: string };
-  const status = raw.status ?? "ERROR";
+  const raw = (await res.json().catch(() => ({}))) as {
+    id?: string; status?: string; errorInformation?: { reason?: string; message?: string }; reason?: string; message?: string;
+    processorInformation?: { responseCode?: string };
+    orderInformation?: { amountDetails?: { authorizedAmount?: string } };
+    promotionInformation?: { description?: string; discountApplied?: string; receiptData?: string };
+  };
+  let status = raw.status;
+  const authorizedUsd = Number(raw.orderInformation?.amountDetails?.authorizedAmount);
+  // Measured in the sandbox: when a Visa card-linked promotion applies (for example "20 percent off" a card's 10th
+  // purchase), the authorization reply carries promotionInformation, a lower authorizedAmount and NO status field.
+  // Only that exact shape (201, an id, processor response code 00, a promotion and an authorized amount) is read
+  // as AUTHORIZED; any other reply without a status stays unconfirmed.
+  if (!status && op === "authorize" && res.status === 201 && raw.id && raw.processorInformation?.responseCode === "00"
+    && raw.promotionInformation && Number.isFinite(authorizedUsd) && authorizedUsd > 0) {
+    status = "AUTHORIZED";
+  }
+  const st = status ?? "ERROR";
+  const promo = raw.promotionInformation;
   return {
-    ok: res.ok && status === SUCCESS[op],
-    parsed: typeof raw.status === "string",
-    status,
+    ok: res.ok && st === SUCCESS[op],
+    parsed: typeof status === "string",
+    status: st,
     id: raw.id,
     httpStatus: res.status,
     reason: raw.errorInformation?.reason ?? raw.reason ?? raw.errorInformation?.message ?? raw.message,
     raw,
+    ...(Number.isFinite(authorizedUsd) && authorizedUsd > 0 ? { authorizedUsd } : {}),
+    ...(promo ? { promotion: { description: String(promo.description ?? ""), discountUsd: Number(promo.discountApplied ?? 0), receipt: String(promo.receiptData ?? "") } } : {}),
   };
 }
 
@@ -71,13 +93,15 @@ const amount = (usd: number) => usd.toFixed(2);
 
 export type PaymentSource =
   | { transientTokenJwt: string }
+  | { customerId: string } // a Visa Token Management Service saved card
   | { card: { number: string; expirationMonth: string; expirationYear: string; securityCode?: string } };
 
 /** Authorize and HOLD: capture is false, so no money moves until capture(). */
-export function authorize(creds: VisaCreds, opts: { dealId: string; amountUsd: number; source: PaymentSource }, f?: typeof fetch) {
+export function authorize(creds: VisaCreds, opts: { dealId: string; amountUsd: number; source: PaymentSource; saveCard?: boolean }, f?: typeof fetch) {
   const payload = {
     clientReferenceInformation: { code: opts.dealId },
-    processingInformation: { capture: false },
+    // saveCard asks Visa's Token Management Service to vault the card and return a customer token
+    processingInformation: opts.saveCard ? { capture: false, actionList: ["TOKEN_CREATE"], actionTokenTypes: ["customer", "paymentInstrument"] } : { capture: false },
     orderInformation: { amountDetails: { totalAmount: amount(opts.amountUsd), currency: "USD" },
       // Cybersource's documented sandbox test billing address: the sandbox's AVS simulation expects it
       // (a Georgia Tech address came back AUTHORIZED_PENDING_REVIEW / AVS_FAILED).
@@ -85,7 +109,9 @@ export function authorize(creds: VisaCreds, opts: { dealId: string; amountUsd: n
         administrativeArea: "CA", postalCode: "94105", country: "US", email: "test@cybs.com", phoneNumber: "4158880000" } },
     ...("card" in opts.source
       ? { paymentInformation: { card: opts.source.card } }
-      : { tokenInformation: { transientTokenJwt: opts.source.transientTokenJwt } }),
+      : "customerId" in opts.source
+        ? { paymentInformation: { customer: { id: opts.source.customerId } } }
+        : { tokenInformation: { transientTokenJwt: opts.source.transientTokenJwt } }),
   };
   return post(creds, "/pts/v2/payments", payload, "authorize", f);
 }
