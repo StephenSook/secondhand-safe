@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   effective: "CAPTURED" as string | null,
   pending: [] as Promise<unknown>[],
   payout: vi.fn(async () => null),
+  call: vi.fn(async () => ({ state: "no-optin" })),
   settleStatus: "CAPTURED",
   claims: null as unknown,
 }));
@@ -20,6 +21,7 @@ vi.mock("@/server/deals/store", () => ({ recordSettlementStatus: async () => h.e
 // main's one-settlement-per-deal claim, on an in-memory store (fresh per test) instead of Atlas
 vi.mock("@/server/deals/claim", async (orig) => ({ ...(await orig<typeof import("@/server/deals/claim")>()), mongoClaims: async () => h.claims }));
 vi.mock("@/server/deals/payout", () => ({ payoutAfterCapture: h.payout }));
+vi.mock("@/server/call/pickup", () => ({ callAfterReversal: h.call }));
 
 import { POST } from "@/app/api/pickup/route";
 import { memoryClaims } from "@/server/deals/claim";
@@ -30,7 +32,7 @@ async function pickup() {
   return res;
 }
 
-beforeEach(() => { h.pending.length = 0; h.payout.mockClear(); h.settleStatus = "CAPTURED"; h.claims = memoryClaims(); vi.stubEnv("SOLANA_SECRET_KEY_B58", ""); });
+beforeEach(() => { h.pending.length = 0; h.payout.mockClear(); h.call.mockClear(); h.settleStatus = "CAPTURED"; h.claims = memoryClaims(); vi.stubEnv("SOLANA_SECRET_KEY_B58", ""); });
 
 describe("pickup -> Visa Direct payout gate", () => {
   it("a capture whose deal is stored CAPTURED pays the seller once", async () => {
@@ -38,6 +40,7 @@ describe("pickup -> Visa Direct payout gate", () => {
     expect((await (await pickup()).json()).status).toBe("CAPTURED");
     expect(h.payout).toHaveBeenCalledTimes(1);
     expect(h.payout).toHaveBeenCalledWith({ dealId: "shs-0123abcd-4567", amountUsd: 36 });
+    expect(h.call).not.toHaveBeenCalled(); // a capture places no recall call
   });
 
   for (const kept of ["REVERSED", "RELEASED", "LAPSED"]) {
@@ -65,6 +68,10 @@ describe("pickup -> Visa Direct payout gate", () => {
   it("a reversal never pays out", async () => {
     h.settleStatus = "REVERSED"; h.effective = "REVERSED";
     await pickup();
+    expect(h.payout).not.toHaveBeenCalled();
+    expect(h.call).toHaveBeenCalledTimes(1); // the reversal places the (opt-in) recall call instead
+    await pickup(); // a repeat scan replays: no second call, still no payout
+    expect(h.call).toHaveBeenCalledTimes(1);
     expect(h.payout).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,7 @@ const LIVE_LABEL: Record<string, string> = {
   tap: "Trusted Agent Protocol signing key",
   solana: "Solana devnet passport",
   visaDirect: "Visa Direct seller payout (Visa Developer sandbox)",
+  recallCall: "Recall phone call (Vonage Voice + ElevenLabs)",
 };
 
 /** The judge's door: no login, no key, every step runs against this deployment. */
@@ -48,6 +49,7 @@ export default async function JudgePage() {
     { t: "See it as a marketplace's safety team would", d: "The Trust and Safety console: why holds were reversed (by the actual CPSC recall number), money that never reached a seller of a recalled item, time from hold to decision. Computed live from MongoDB Atlas; the deals are our demos and automated tests.", link: "/trust", cta: "Open the console" },
     { t: "Compare a photo with every recall photo", d: "MongoDB Atlas Vector Search over the CPSC recall photos: on /pickup your photo's embedding (computed in your browser) returns the three closest recall photos. Tested on held-out photos, and a resemblance is only ever a reason to read the label. Try a scanned listing:", code: `curl "${base}/api/lookalike?listingId=ebay:287601074532"` },
     { t: "See the Atlanta scan", d: `Every one of the ${facts.scannedAtlanta} Craigslist Atlanta baby and kid listings we scanned, on a map, with what review found.`, link: "/map", cta: "Open the map" },
+    ...(live.recallCall ? [{ t: "Get the recall call", d: "On /pickup, after the hold, type your US phone number under “Call me if it's recalled”: Lullabuy phones you a 4-digit code, and you type it back. Then type BHC001 / 202408: Visa reverses the hold, and a few seconds later Lullabuy phones you and says, in the ElevenLabs voice, which CPSC recall matched and that you were not charged. Press 1 to hear it again. One call per deal, capped per day.", link: "/pickup", cta: "Open pickup" }] : []),
     { t: "Read the code", d: "Every number on this site is computed by a script in the repo. CI runs lint, types, tests, build, pytest, secret scan and an em-dash gate.", link: "https://github.com/StephenSook/secondhand-safe", cta: "GitHub" },
   ];
   return (

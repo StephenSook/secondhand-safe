@@ -19,6 +19,9 @@ export const INTEGRATIONS = {
   // Message Level Encryption, which our project's push endpoint enforces (measured: 400 / 9125 without it)
   visaDirect: ["VISA_DIRECT_USER_ID", "VISA_DIRECT_PASSWORD", "VISA_DIRECT_CERT", "VISA_DIRECT_KEY", "VISA_DIRECT_CA",
     "VISA_DIRECT_MLE_KEY_ID", "VISA_DIRECT_MLE_SERVER_CERT", "VISA_DIRECT_MLE_PRIVATE_KEY"],
+  // the recall call (PLAN 6.12): a separate Vonage application, its caller id, the number-sealing secret, the URL
+  // Vonage fetches audio from, and Atlas for the claims and caps (src/server/call/)
+  recallCall: ["RECALL_CALL_VONAGE_APPLICATION_ID", "RECALL_CALL_VONAGE_PRIVATE_KEY", "RECALL_CALL_FROM_NUMBER", "RECALL_CALL_SECRET", "PUBLIC_BASE_URL", "MONGODB_URI"],
 } as const;
 
 export type Integration = keyof typeof INTEGRATIONS;
