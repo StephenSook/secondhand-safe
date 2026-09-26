@@ -12,9 +12,7 @@ export const metadata: Metadata = { title: `Recall watch: ${BRAND}` };
 export default async function WatchPage() {
   await connection();
   const sales = await watchedSales();
-  const flagged = (sales ?? []).filter((s) => s.postSaleRecall);
-  // only clean model-number strings are offered as suggestions (labels are read or typed by anyone)
-  const models = [...new Set((sales ?? []).map((s) => s.label?.model?.trim()).filter((m): m is string => !!m && /^[A-Z0-9][A-Z0-9-]{3,19}$/i.test(m)))].slice(0, 6);
+  const flaggedCount = (sales ?? []).filter((s) => s.postSaleRecall).length;
   return (
     <>
       <Nav />
@@ -33,12 +31,12 @@ export default async function WatchPage() {
               <p className="font-bold">{sales ? "captured sales being watched" : "MongoDB Atlas did not answer"}</p>
             </div>
             <div className="rounded-[2rem] border-[3px] border-ink bg-paper p-5">
-              <p className="display text-5xl">{flagged.length}</p>
+              <p className="display text-5xl">{flaggedCount}</p>
               <p className="font-bold">real recalls found after a sale so far</p>
-              {flagged.map((s) => <p key={s._id} className="text-sm font-semibold mt-1">CPSC {s.postSaleRecall?.recallNumber} on sale {s._id}</p>)}
             </div>
           </div>
-          <div className="mt-8"><WatchSimulator suggestions={models} /></div>
+          {/* ZZT9Q41X is the clean label on our demo table (the end-to-end test captures it too) */}
+          <div className="mt-8"><WatchSimulator suggestions={["ZZT9Q41X"]} /></div>
           <p className="mt-6 text-sm font-semibold text-ink/70">
             To be notified yourself: complete a sale on /pickup and press &quot;Tell me if this item is ever recalled&quot;. Web Push works in
             Chrome, Edge and Firefox; on an iPhone, add Lullabuy to the Home Screen first. The sales here are our demo purchases and automated tests.

@@ -40,10 +40,10 @@ export async function saveSubscription(dealId: string, sub: PushSub): Promise<bo
 }
 
 /** Sends one notification to every browser watching these sales; drops subscriptions the push service says are gone. */
-export async function notify(dealIds: string[], payload: { title: string; body: string; url: string; tag: string }): Promise<{ sent: number; failed: number }> {
+export async function notify(dealIds: string[], payload: { title: string; body: string; url: string; tag: string }): Promise<{ sent: number; failed: number; subs: number }> {
   const keys = vapid();
   const db = await getDb().catch(() => null);
-  if (!keys || !db || !dealIds.length) return { sent: 0, failed: 0 };
+  if (!keys || !db || !dealIds.length) return { sent: 0, failed: 0, subs: 0 };
   webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey);
   const col = db.collection<{ _id: string; dealId: string; sub: PushSub }>("push_subs");
   const subs = await col.find({ dealId: { $in: dealIds.slice(0, 200) } }, { maxTimeMS: 4000 }).limit(500).toArray();
@@ -58,5 +58,5 @@ export async function notify(dealIds: string[], payload: { title: string; body: 
       if (code === 404 || code === 410) await col.deleteOne({ _id: s._id }).catch(() => {});
     }
   }));
-  return { sent, failed };
+  return { sent, failed, subs: subs.length };
 }

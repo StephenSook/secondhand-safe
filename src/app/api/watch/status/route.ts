@@ -1,9 +1,8 @@
 import { watchedSales } from "@/server/deals/store";
 
-/** GET: how many captured sales the recall watch re-checks, and the real post-sale recalls it has found. */
+/** GET: counts only (how many captured sales are watched, how many real post-sale recalls were found). */
 export async function GET() {
   const sales = await watchedSales();
   if (!sales) return Response.json({ error: "MongoDB Atlas did not answer." }, { status: 503, headers: { "cache-control": "no-store" } });
-  const flagged = sales.filter((s) => s.postSaleRecall).map((s) => ({ dealId: s._id, recall: s.postSaleRecall }));
-  return Response.json({ watchedSales: sales.length, flagged }, { headers: { "cache-control": "no-store" } });
+  return Response.json({ watchedSales: sales.length, flagged: sales.filter((s) => s.postSaleRecall).length }, { headers: { "cache-control": "no-store" } });
 }

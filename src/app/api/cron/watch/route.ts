@@ -23,9 +23,13 @@ export async function GET(request: Request) {
   const hits = recheckSales(sales);
   const out = [];
   for (const h of hits) {
-    const newly = await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url });
-    const push = newly ? await notify([h.dealId], { title: `Recall announced: CPSC ${h.recallNumber}`, body: `${h.title.slice(0, 120)}. Tap for what to do.`, url: "/deal/{deal}", tag: `recall-${h.recallNumber}` }).catch(() => ({ sent: 0, failed: 0 })) : { sent: 0, failed: 0 };
-    out.push({ dealId: h.dealId, recallNumber: h.recallNumber, newly: !!newly, notified: push.sent });
+    // notify first; the flag (the idempotency key) is written only when delivery did not fail outright, so a push
+    // outage is retried on the next run instead of being skipped for ever
+    const push = await notify([h.dealId], { title: `Recall announced: CPSC ${h.recallNumber}`, body: `${h.title.slice(0, 120)}. Tap for what to do.`, url: "/deal/{deal}", tag: `recall-${h.recallNumber}` })
+      .catch(() => ({ sent: 0, failed: 1, subs: 1 }));
+    const delivered = push.subs === 0 || push.sent > 0;
+    const newly = delivered ? await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url }, push.sent) : false;
+    out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered });
   }
   return Response.json({ checked: sales.length, hits: out }, { headers: NO_STORE });
 }
