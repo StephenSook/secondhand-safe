@@ -21,10 +21,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "tech.lullabuy.app",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "package": "tech.lullabuy.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,7 +32,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Lullabuy reads the product label from a photo you choose.",
-          "cameraPermission": "Lullabuy photographs the product label to check it against federal recalls."
+          "cameraPermission": "Lullabuy photographs the product label to check it against federal recalls.",
+          "microphonePermission": false
         }
       ]
     ],
