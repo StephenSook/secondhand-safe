@@ -4,6 +4,7 @@ import { visaCreds, SANDBOX_TEST_CARD } from "@/server/visa/creds";
 import { issueDealToken } from "@/server/deals/token";
 import { verifyAgentRequest } from "@/server/tap/agent";
 import { isTransientToken } from "@/server/visa/microform";
+import { recordHold } from "@/server/deals/store";
 
 /**
  * POST { listing, amountUsd, transientTokenJwt? } -> a real Visa Acceptance sandbox authorization with capture OFF: the HOLD.
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
     return Response.json({ error, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
   }
+  await recordHold({ dealId, listing, amountUsd, card: tt ? "microform" : "sandbox-test-card", agent: agent?.keyid ?? null });
   return Response.json({
     dealId, listing, amountUsd, status: "HELD", card: tt ? "microform" : "sandbox-test-card", ...(agent ? { tap: { verified: true, keyid: agent.keyid } } : {}),
     visa: { authId: auth.id, status: auth.status, httpStatus: auth.httpStatus, host: creds.host },

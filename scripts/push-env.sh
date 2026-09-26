@@ -18,12 +18,13 @@ pairs=(
   # config string set once by hand); the keychain key bills a depleted prepay account.
   "ELEVENLABS_API_KEY=elevenlabs-api-key"
   "MONGODB_URI="
+  "MONGODB_DB="
   "VISA_MERCHANT_ID="
   "VISA_KEY_ID="
   "VISA_SECRET_KEY="
   "TAP_AGENT_PRIVATE_KEY_HEX="
   "TAP_AGENT_KEY_ID="
-  "SOLANA_SECRET_KEY_B58="
+  # SOLANA_SECRET_KEY_B58 is pushed by hand only once the devnet wallet is funded: /judge reads its presence as "live"
 )
 
 from_env_file() {

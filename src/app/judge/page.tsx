@@ -37,6 +37,7 @@ export default async function JudgePage() {
         ? "On /pickup, type Visa's sandbox test card (4111 1111 1111 1111, any CVV, a future expiry) into Visa's own Microform fields, pick a listing and press Agree: a real Visa Acceptance sandbox authorization is created with capture off (HELD). Type BHC001 / 202408 and the hold is REVERSED at Visa; type any model with no recall and it is CAPTURED. The Visa ids are on screen."
         : "On /pickup the scan decides CAPTURE or REVERSE. The Visa hold itself needs sandbox keys on this deployment (see the live list below); it is verified by tests/visa.live.test.ts.",
       link: "/pickup", cta: "Open pickup scan" },
+    { t: "Watch it from the seller's side", d: "After you press Agree on /pickup, a QR code appears. Scan it with a second phone: the seller's live view (MongoDB Atlas) follows the same deal to CAPTURED or REVERSED, with the reason. Every deal is also on the board.", link: "/board", cta: "Open the deal board" },
     { t: "See the Atlanta scan", d: `Every one of the ${facts.scannedAtlanta} Craigslist Atlanta baby and kid listings we scanned, on a map, with what review found.`, link: "/map", cta: "Open the map" },
     { t: "Read the code", d: "Every number on this site is computed by a script in the repo. CI runs lint, types, tests, build, pytest, secret scan and an em-dash gate.", link: "https://github.com/StephenSook/secondhand-safe", cta: "GitHub" },
   ];

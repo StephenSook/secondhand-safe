@@ -325,6 +325,14 @@ export function PickupScanner() {
                 {deal.passportPath && <><dt>passport</dt><dd><a href={deal.passportPath} className="underline font-bold">Solana devnet record</a></dd></>}
                 {deal.passportError && <><dt>passport</dt><dd>{deal.passportError}</dd></>}
               </dl>
+              {health?.integrations?.mongo && (
+                <div className="mt-4 flex items-center gap-3 rounded-2xl border-2 border-ink bg-paper text-ink p-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/api/qr?deal=${deal.dealId}`} alt="QR code for the seller's live view of this deal" className="w-24 h-24" />
+                  <p className="text-sm font-bold">Seller: scan to watch this deal live on your phone, and see why it settles the way it does.
+                    <a href={`/deal/${deal.dealId}`} className="block underline mt-1">open the seller view</a></p>
+                </div>
+              )}
               {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}){deal.reason === "MISSING_AUTH" ? ": this hold was already settled or is not open" : ""}. Visa did not apply it.</p>}
               {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
               {deal.status === "HELD"

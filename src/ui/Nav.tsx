@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/atlas", label: "Model's view" },
   { href: "/shop", label: "Shop" },
   { href: "/pickup", label: "Pickup scan" },
+  { href: "/board", label: "Deal board" },
   { href: "/judge", label: "Judges" },
 ];
 
