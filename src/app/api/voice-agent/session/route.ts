@@ -46,7 +46,15 @@ export async function GET(request: Request) {
     }
     throw e;
   }
-  if ((await underDailyCap()) === false) {
+  if (DAILY_CAP === 0) {
+    return Response.json({ error: "The voice agent is switched off right now. Type your request instead." }, { status: 503, headers: NO_STORE });
+  }
+  // fail closed: without a readable daily count there is no global budget, so no session is minted
+  const under = await underDailyCap();
+  if (under === null) {
+    return Response.json({ error: "The voice agent cannot check today's budget right now. Type your request instead." }, { status: 503, headers: NO_STORE });
+  }
+  if (!under) {
     return Response.json({ error: "The voice agent has used today's minutes. Type your request instead." }, { status: 429, headers: NO_STORE });
   }
   try {

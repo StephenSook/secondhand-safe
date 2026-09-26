@@ -1,5 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { spawnSync } from "node:child_process";
+
+// A controllable stand-in for the Atlas daily counter the session route uses.
+const atlas = vi.hoisted(() => ({ configured: true, fail: false, n: 0 }));
+// When hang is set, the Gemini key lookup never answers (a stalled keyless token exchange).
+const gem = vi.hoisted(() => ({ hang: false }));
+vi.mock("@/server/shop/key", async (orig) => {
+  const real = await orig<typeof import("@/server/shop/key")>();
+  return { ...real, shopGeminiKey: () => (gem.hang ? new Promise<string | null>(() => {}) : real.shopGeminiKey()) };
+});
+vi.mock("@/server/db/mongo", () => ({
+  getDb: async () => (atlas.configured ? { collection: () => ({ findOneAndUpdate: async () => {
+    if (atlas.fail) throw new Error("atlas down");
+    return { _id: "voice-sessions:today", n: ++atlas.n };
+  } }) } : null),
+}));
 import { GET as session } from "@/app/api/voice-agent/session/route";
 import { POST as search } from "@/app/api/voice-agent/search/route";
 import { secretMatches, speakable } from "@/server/voice/agent";
@@ -14,6 +29,7 @@ const post = (body: unknown, headers: Record<string, string> = {}) =>
 
 beforeEach(() => {
   for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; } // GEMINI unset: keyword search, no network
+  atlas.configured = true; atlas.fail = false; atlas.n = 0; gem.hang = false;
 });
 afterEach(() => {
   for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
@@ -54,6 +70,22 @@ describe("voice agent search webhook (/api/voice-agent/search)", () => {
     process.env.ELEVENLABS_TOOL_SECRET = SECRET;
     const j = await (await post({ q: "bassinet under 80 dollars near Midtown" }, { "x-lullabuy-agent": SECRET })).json();
     expect(j.found).toBeGreaterThan(0);
+  });
+  it("answers from the keyword search when the Gemini path stalls past its budget", async () => {
+    process.env.ELEVENLABS_TOOL_SECRET = SECRET;
+    gem.hang = true;
+    vi.useFakeTimers();
+    try {
+      const pending = post({ q: "bassinet under 80 dollars" }, { "x-lullabuy-agent": SECRET });
+      await vi.advanceTimersByTimeAsync(12_100);
+      const r = await pending;
+      expect(r.status).toBe(200);
+      const j = await r.json();
+      expect(j.engine).toBe("keywords");
+      expect(j.found).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("rejects an empty request", async () => {
     process.env.ELEVENLABS_TOOL_SECRET = SECRET;
@@ -119,6 +151,40 @@ describe("voice agent session (/api/voice-agent/session)", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=agent_123");
     expect((init.headers as Record<string, string>)["xi-api-key"]).toBe("xi-test-key-value");
+  });
+  it("fails closed (503, nothing minted) when Atlas cannot count today's sessions", async () => {
+    process.env.ELEVENLABS_API_KEY = "xi-test-key-value";
+    process.env.ELEVENLABS_AGENT_ID = "agent_123";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    atlas.configured = false;
+    expect((await get()).status).toBe(503);
+    atlas.configured = true; atlas.fail = true;
+    expect((await get()).status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("refuses (429) once the daily cap is used, without minting", async () => {
+    process.env.ELEVENLABS_API_KEY = "xi-test-key-value";
+    process.env.ELEVENLABS_AGENT_ID = "agent_123";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    atlas.n = 10_000;
+    expect((await get()).status).toBe(429);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("VOICE_DAILY_CAP=0 switches voice off before Atlas is asked", async () => {
+    vi.resetModules();
+    vi.stubEnv("VOICE_DAILY_CAP", "0");
+    const { GET: offSession } = await import("@/app/api/voice-agent/session/route");
+    process.env.ELEVENLABS_API_KEY = "xi-test-key-value";
+    process.env.ELEVENLABS_AGENT_ID = "agent_123";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await offSession(new Request("http://x/api/voice-agent/session", { headers: { "sec-fetch-site": "same-origin", "x-forwarded-for": "10.9.9.9" } }));
+    expect(r.status).toBe(503);
+    expect(atlas.n).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
   it("is 502 when ElevenLabs refuses", async () => {
     process.env.ELEVENLABS_API_KEY = "xi-test-key-value";

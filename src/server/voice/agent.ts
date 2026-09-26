@@ -12,7 +12,7 @@ export const ELEVENLABS_API = "https://api.elevenlabs.io";
 /** GET /v1/convai/conversation/get-signed-url?agent_id=... with the xi-api-key header -> { signed_url }. */
 export async function mintSignedUrl(agentId: string, key: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   const url = `${ELEVENLABS_API}/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`;
-  const res = await fetchImpl(url, { headers: { "xi-api-key": key }, cache: "no-store" });
+  const res = await fetchImpl(url, { headers: { "xi-api-key": key }, cache: "no-store", signal: AbortSignal.timeout(8_000) });
   if (!res.ok) throw new Error(`ElevenLabs HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
   const j = (await res.json().catch(() => null)) as { signed_url?: unknown } | null;
   if (typeof j?.signed_url !== "string" || !j.signed_url.startsWith("wss://")) throw new Error("ElevenLabs returned no signed URL.");

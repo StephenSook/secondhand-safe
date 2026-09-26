@@ -65,7 +65,7 @@ const tools = (secretId) => [
       type: "webhook",
       name: "search_lullabuy",
       description: "Search real secondhand baby-gear listings, each pre-screened against CPSC and NHTSA recalls and banned product types. Returns the top three with price, place, verdict and the reason for any red or amber verdict.",
-      response_timeout_secs: 20,
+      response_timeout_secs: 30, // our route answers within 12 s (keyword fallback), well inside this
       api_schema: {
         url: SEARCH_URL,
         method: "POST",
@@ -148,9 +148,11 @@ async function call(key, method, path, body) {
   if (!res.ok) {
     // A validation error can echo the request (including a secret's value), so scrub our secrets from the body,
     // and never print the body of a failed call to the secrets endpoint at all.
-    let detail = path.startsWith("/v1/convai/secrets") ? "(body withheld: secrets endpoint)" : text.slice(0, 300);
-    for (const s of [key, process.env.ELEVENLABS_TOOL_SECRET?.trim()].filter(Boolean)) detail = detail.split(s).join(REDACTED);
-    throw new Error(`${method} ${path} -> HTTP ${res.status}: ${detail}`);
+    // Redact the WHOLE body before truncating (a cut can split a secret so the exact match no longer finds it),
+    // and redact the final message again at the sink.
+    const scrub = (t) => [key, process.env.ELEVENLABS_TOOL_SECRET?.trim()].filter(Boolean).reduce((acc, s) => acc.split(s).join(REDACTED), t);
+    const detail = path.startsWith("/v1/convai/secrets") ? "(body withheld: secrets endpoint)" : scrub(text).slice(0, 300);
+    throw new Error(scrub(`${method} ${path} -> HTTP ${res.status}: ${detail}`));
   }
   return text ? JSON.parse(text) : {};
 }
