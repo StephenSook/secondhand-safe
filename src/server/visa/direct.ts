@@ -65,9 +65,14 @@ export const VISA_TIMEOUT_MS = 10_000;
  *  test BINs, so VISA_DIRECT_ACQUIRING_BIN overrides it when that dashboard shows a different one. */
 export const SAMPLE_ACQUIRING_BIN = "408999";
 export const ACQUIRER_COUNTRY_CODE = "840";
-/** [SAMPLE] recipientPrimaryAccountNumber: a Visa sandbox test card. We have no seller card on file, so every
- *  sandbox payout goes to this card and the UI says so. */
-export const SANDBOX_RECIPIENT_PAN = "4957030420210496";
+/** The sandbox recipient card. We have no seller card on file, so every sandbox payout goes to a Visa test card
+ *  and the UI says so. The sandbox answers by test scenario: the Visa sandbox test-data table a Visa support
+ *  specialist quoted at https://community.developer.visa.com/t5/Product-Functionality-Errors/MultiPushFunds-Invalid-input-found-please-correct-the-input-data/td-p/12518
+ *  lists recipient ...0496 (the [SAMPLE] card) as the "Action Code-65" scenario, and recipient ...0462 as an
+ *  "Action Code-00" scenario (approvalCode 21324K). MEASURED 2026-09-26: ...0496 came back 200 / actionCode 65, as
+ *  that table says. That table is for multi push; whether ...0462 approves a single push is NOT yet measured.
+ *  VISA_DIRECT_RECIPIENT_PAN overrides it with a card from the project dashboard's own Test Data page. */
+export const SANDBOX_RECIPIENT_PAN = "4957030420210462";
 /** [SAMPLE] senderAccountNumber. */
 const SAMPLE_SENDER_ACCOUNT = "4653459515756154";
 
@@ -411,7 +416,7 @@ export interface PayoutResult {
   status: PayoutStatus;
   dealId: string;
   amountUsd: number;
-  /** "card ending 0496": never more of the card number than this */
+  /** "card ending 0462": never more of the card number than this */
   recipient: string | null;
   note: string;
   /** true when this deal's payout had already been claimed by an earlier call; nothing was sent this time */
@@ -449,7 +454,7 @@ export async function pushFunds(p: { dealId: string; amountUsd: number; recipien
   try { cents = toCents(p.amountUsd); } catch (e) {
     return { ...base, status: "FAILED", note: `Not sent: ${(e as Error).message}` };
   }
-  const pan = (p.recipientPan ?? SANDBOX_RECIPIENT_PAN).replace(/\s+/g, "");
+  const pan = (p.recipientPan ?? (env.VISA_DIRECT_RECIPIENT_PAN?.trim() || SANDBOX_RECIPIENT_PAN)).replace(/\s+/g, "");
   if (!validPan(pan)) return { ...base, status: "FAILED", note: "Not sent: the recipient card number is not valid" };
   const recipient = ending(panLast4(pan));
   const now = (deps.now ?? (() => new Date()))();

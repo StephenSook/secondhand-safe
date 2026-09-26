@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { helloWorld, pushFunds, visaDirectCreds, VISA_DIRECT_ENV, VISA_DIRECT_TLS_ENV, type PayoutDoc, type PayoutStore } from "@/server/visa/direct";
 
@@ -20,9 +20,10 @@ if (!e.VISA_DIRECT_MLE_SERVER_CERT?.trim()) e.VISA_DIRECT_MLE_SERVER_CERT = from
 if (!e.VISA_DIRECT_MLE_PRIVATE_KEY?.trim()) e.VISA_DIRECT_MLE_PRIVATE_KEY = fromFile(e.VISA_DIRECT_MLE_PRIVATE_KEY_FILE);
 const set = (keys: readonly string[]) => keys.every((k) => (process.env[k] ?? "").trim().length > 0);
 
-function memoryStore(): PayoutStore {
+function memoryStore(): PayoutStore & { docs: Map<string, PayoutDoc> } {
   const docs = new Map<string, PayoutDoc>();
   return {
+    docs,
     async claim(doc) { if (docs.has(doc._id)) return { state: "exists", doc: docs.get(doc._id)! }; docs.set(doc._id, doc); return { state: "claimed" }; },
     async finish(id, f) { const d = docs.get(id); if (!d) return false; Object.assign(d, f); return true; },
     async release(id) { return docs.delete(id); },
@@ -33,14 +34,22 @@ describe.skipIf(!set(VISA_DIRECT_TLS_ENV))("Visa Direct sandbox, live", () => {
   it("helloworld answers 200 over two-way TLS", async () => {
     const r = await helloWorld(visaDirectCreds(process.env, "optional"));
     console.log("helloworld", r.httpStatus, r.error ?? "");
+    if (e.VISA_DIRECT_LIVE_REPORT) writeFileSync(`${e.VISA_DIRECT_LIVE_REPORT}.hello`, JSON.stringify({ httpStatus: r.httpStatus, ok: r.ok }) + "\n");
     expect(r.ok).toBe(true);
   }, 30_000);
 
   // needs Message Level Encryption too: our project answers 400 / 9125 to a push without it
   it.skipIf(!set(VISA_DIRECT_ENV))("one push funds transaction gets a definite answer from Visa", async () => {
     const dealId = `shs-live-${Date.now().toString(16)}`;
-    const r = await pushFunds({ dealId, amountUsd: 12.34 }, { store: memoryStore() });
-    console.log("push", r.status, r.httpStatus, r.actionCode ?? "", r.transactionIdentifier ?? "", r.note);
+    const store = memoryStore();
+    const r = await pushFunds({ dealId, amountUsd: 12.34 }, { store });
+    const d = store.docs.get(dealId);
+    // presence only for Visa's ids; never the card number
+    const report = JSON.stringify({ status: r.status, httpStatus: r.httpStatus, actionCode: r.actionCode ?? null, errorCode: d?.errorCode ?? null,
+      approvalCode: Boolean(d?.approvalCode), transactionIdentifier: Boolean(d?.transactionIdentifier), correlationId: Boolean(d?.correlationId), note: r.note });
+    console.log("push", report);
+    // vitest hides the console of passing tests: VISA_DIRECT_LIVE_REPORT=<path> keeps the outcome of this one push
+    if (e.VISA_DIRECT_LIVE_REPORT) writeFileSync(e.VISA_DIRECT_LIVE_REPORT, report + "\n");
     // Visa's own published sandbox sample came back HTTP 200 with a non-00 action code, so a processed decline is
     // a definite answer too; what must not happen is a transport failure or an unreadable reply
     expect(r.httpStatus).toBe(200);

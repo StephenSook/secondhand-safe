@@ -56,6 +56,7 @@ const schema = z.object({
   VISA_DIRECT_CA: z.string().optional(),
   VISA_DIRECT_HOST: z.string().default("sandbox.api.visa.com"),
   VISA_DIRECT_ACQUIRING_BIN: z.string().optional(),
+  VISA_DIRECT_RECIPIENT_PAN: z.string().optional(),
   // Visa Direct Message Level Encryption (VDP project > Message Level Encryption): Key-ID, Visa's server encryption
   // certificate and our MLE private key, all three or none
   VISA_DIRECT_MLE_KEY_ID: z.string().optional(),
