@@ -1,0 +1,17 @@
+# Keep deploy uploads to what the Next.js build reads.
+ml/.venv
+ml/data
+ml/out/*
+!ml/out/metrics.json
+!ml/out/split.json
+ml/*.py
+ml/*.csv
+ml/requirements*.txt
+data/*.py
+data/__pycache__
+docs
+tests
+scripts
+test-results
+playwright-report
+*.log
