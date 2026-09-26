@@ -25,11 +25,23 @@ const LINES: Record<Lang, Record<VerdictKind, string>> = {
 
 export const lineFor = (kind: VerdictKind, lang: Lang) => LINES[lang][kind];
 
+/** The shopping agent's spoken summary, built only from counts (never from caller text). */
+export function summaryLine(total: number, red: number, amber: number, clear: number, lang: Lang): string {
+  if (lang === "es") {
+    return `Encontré ${total} anuncios. ${red} bloqueados, ${amber} necesitan revisión y ${clear} pasaron la revisión de la foto. Nada se paga hasta que la etiqueta pase en la entrega.`;
+  }
+  return `I found ${total} listings. ${red} blocked, ${amber} need a check, and ${clear} passed the photo check. Nothing is paid until the label passes at pickup.`;
+}
+
 export async function speak(kind: VerdictKind, lang: Lang, key: string, fetchImpl: typeof fetch = fetch): Promise<ArrayBuffer> {
+  return speakText(lineFor(kind, lang), lang, key, fetchImpl);
+}
+
+export async function speakText(text: string, lang: Lang, key: string, fetchImpl: typeof fetch = fetch): Promise<ArrayBuffer> {
   const res = await fetchImpl(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_64`, {
     method: "POST",
     headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
-    body: JSON.stringify({ text: lineFor(kind, lang), model_id: TTS_MODEL, language_code: lang,
+    body: JSON.stringify({ text, model_id: TTS_MODEL, language_code: lang,
       voice_settings: { stability: 0.55, similarity_boost: 0.75 } }),
   });
   if (!res.ok) throw new Error(`ElevenLabs HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);

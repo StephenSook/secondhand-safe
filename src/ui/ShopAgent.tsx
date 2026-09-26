@@ -40,6 +40,25 @@ export function ShopAgent() {
   const [held, setHeld] = useState<Held | null>(null);
   const [buying, setBuying] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [voiceMsg, setVoiceMsg] = useState("");
+
+  /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
+  async function speakSummary(r: ShopResponse, lang: "en" | "es") {
+    setVoiceMsg("…");
+    try {
+      const c = r.counts;
+      const resp = await fetch(`/api/voice?summary=${r.results.length},${c.red},${c.amber},${c.clear}&lang=${lang}`);
+      if (resp.status === 503) { setVoiceMsg("Voice is off on this deployment."); return; }
+      if (!resp.ok) throw new Error(String(resp.status));
+      audio.current?.pause();
+      audio.current = new Audio(URL.createObjectURL(await resp.blob()));
+      await audio.current.play();
+      setVoiceMsg("");
+    } catch {
+      setVoiceMsg("Could not play the voice.");
+    }
+  }
 
   async function run(query = q) {
     const text = query.trim();
@@ -130,6 +149,17 @@ export function ShopAgent() {
               <span className="text-amber-soft">{res.counts.amber} need a check</span> ·{" "}
               <span className="text-green-soft">{res.counts.clear} photo check passed</span>
             </p>
+            {res.results.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(["en", "es"] as const).map((lang) => (
+                  <button key={lang} type="button" onClick={() => speakSummary(res, lang)}
+                    className="rounded-full border-2 border-paper px-3 py-1 text-sm font-extrabold hover:bg-paper hover:text-ink">
+                    <span aria-hidden>🔊</span> {lang === "en" ? "Hear it" : "Escúchalo en español"}
+                  </button>
+                ))}
+                {voiceMsg && <span className="text-sm font-semibold opacity-80">{voiceMsg}</span>}
+              </div>
+            )}
           </div>
           {res.results.length === 0 && <p className="hand text-3xl">Nothing matched. Try fewer words or a higher budget.</p>}
           <ul className="grid gap-4 md:grid-cols-2">

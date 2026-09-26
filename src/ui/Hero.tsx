@@ -60,6 +60,7 @@ export function Hero({ recalls }: { recalls: number }) {
               reversed and nobody takes the risk home.
             </p>
             <div data-reveal className="hero-cta mt-8 flex flex-wrap gap-3">
+              <SquashButton href="/shop" bg="var(--visa)" accent="var(--amber)">Shop with the agent</SquashButton>
               <SquashButton href="/#check" accent="var(--green)">Try a live recall check</SquashButton>
               <SquashButton href="/judge" bg="var(--paper)" fg="var(--ink)" accent="var(--pink)">Judges start here</SquashButton>
             </div>
