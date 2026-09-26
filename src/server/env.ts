@@ -15,6 +15,10 @@ export const INTEGRATIONS = {
   elevenlabs: ["ELEVENLABS_API_KEY"],
   tap: ["TAP_AGENT_PRIVATE_KEY_HEX", "TAP_AGENT_KEY_ID"],
   solana: ["SOLANA_SECRET_KEY_B58"],
+  // Visa Direct push payout (PLAN 3.17): VDP two-way TLS (PEM text) plus the project user id and password, and
+  // Message Level Encryption, which our project's push endpoint enforces (measured: 400 / 9125 without it)
+  visaDirect: ["VISA_DIRECT_USER_ID", "VISA_DIRECT_PASSWORD", "VISA_DIRECT_CERT", "VISA_DIRECT_KEY", "VISA_DIRECT_CA",
+    "VISA_DIRECT_MLE_KEY_ID", "VISA_DIRECT_MLE_SERVER_CERT", "VISA_DIRECT_MLE_PRIVATE_KEY"],
   // the recall call (PLAN 6.12): a separate Vonage application, its caller id, the number-sealing secret, the URL
   // Vonage fetches audio from, and Atlas for the claims and caps (src/server/call/)
   recallCall: ["RECALL_CALL_VONAGE_APPLICATION_ID", "RECALL_CALL_VONAGE_PRIVATE_KEY", "RECALL_CALL_FROM_NUMBER", "RECALL_CALL_SECRET", "PUBLIC_BASE_URL", "MONGODB_URI"],
@@ -47,6 +51,20 @@ const schema = z.object({
   TAP_AGENT_KEY_ID: z.string().min(1),
   SOLANA_RPC_URL: z.string().default("https://api.devnet.solana.com"),
   SOLANA_SECRET_KEY_B58: z.string().optional(),
+  // Visa Direct (PLAN 3.17): optional, the payout is NOT_CONFIGURED without all five
+  VISA_DIRECT_USER_ID: z.string().optional(),
+  VISA_DIRECT_PASSWORD: z.string().optional(),
+  VISA_DIRECT_CERT: z.string().optional(),
+  VISA_DIRECT_KEY: z.string().optional(),
+  VISA_DIRECT_CA: z.string().optional(),
+  VISA_DIRECT_HOST: z.string().default("sandbox.api.visa.com"),
+  VISA_DIRECT_ACQUIRING_BIN: z.string().optional(),
+  VISA_DIRECT_RECIPIENT_PAN: z.string().optional(),
+  // Visa Direct Message Level Encryption (VDP project > Message Level Encryption): Key-ID, Visa's server encryption
+  // certificate and our MLE private key, all three or none
+  VISA_DIRECT_MLE_KEY_ID: z.string().optional(),
+  VISA_DIRECT_MLE_SERVER_CERT: z.string().optional(),
+  VISA_DIRECT_MLE_PRIVATE_KEY: z.string().optional(),
   PUBLIC_BASE_URL: z.url(),
 });
 

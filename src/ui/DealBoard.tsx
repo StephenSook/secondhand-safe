@@ -6,7 +6,8 @@ import { LIVE_LABEL, useLiveRefresh } from "./useLiveRefresh";
 
 /** The deal board for the expo screen: every hold and how it ended, re-read from MongoDB Atlas when its change
  *  stream reports a deal change, or every 3 seconds when the stream is not available. */
-type Row = { dealId: string; listing: string; amountUsd: number; status: string; updatedAt: string; verdict?: { kind: string } };
+type Row = { dealId: string; listing: string; amountUsd: number; status: string; updatedAt: string; verdict?: { kind: string }; payout?: { status: string } | null };
+const PAYOUT_CHIP: Record<string, [string, string]> = { SENT: ["bg-green text-paper", "PAID OUT"], UNCERTAIN: ["bg-sand", "PAYOUT ?"], FAILED: ["bg-sand", "PAYOUT FAILED"] };
 type Board = { recent: Row[]; byStatus: Record<string, { n: number; usd: number }> };
 const CHIP: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand", RELEASED: "bg-aqua", LAPSED: "bg-sand" };
 
@@ -45,7 +46,12 @@ export function DealBoard() {
           <li key={r.dealId} className="p-4 grid grid-cols-[auto_1fr_auto] gap-3 items-center">
             <span className={`rounded-full border-2 border-ink px-3 py-0.5 text-xs font-extrabold ${CHIP[r.status] ?? "bg-sand"}`}>{r.status}</span>
             <Link href={`/deal/${r.dealId}`} className="font-bold truncate underline-offset-4 hover:underline">{r.listing}</Link>
-            <span className="display text-xl">${r.amountUsd.toFixed(2)}</span>
+            <span className="display text-xl">
+              {r.payout && PAYOUT_CHIP[r.payout.status] && (
+                <span title="Seller payout with Visa Direct" className={`mr-2 align-middle rounded-full border-2 border-ink px-2 py-0.5 text-[0.65rem] font-extrabold ${PAYOUT_CHIP[r.payout.status][0]}`}>{PAYOUT_CHIP[r.payout.status][1]}</span>
+              )}
+              ${r.amountUsd.toFixed(2)}
+            </span>
           </li>
         ))}
       </ul>
