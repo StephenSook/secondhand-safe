@@ -6,6 +6,7 @@ import { VERDICT_LABEL, CAPTURABLE } from "@/core/verdict";
 import type { ClipHead, ClassifyResult } from "@/core/clipHead";
 import type { LabelRead } from "@/server/ml/label";
 import { SquashButton } from "./SquashButton";
+import { SpeakVerdict } from "./SpeakVerdict";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 
 type Health = { integrations: Record<string, boolean> };
@@ -190,6 +191,7 @@ export function PickupScanner() {
                 CPSC {verdict.recall.recallNumber}: read the notice ↗
               </a>
             )}
+            <SpeakVerdict kind={verdict.kind} autoPlay dark={!!(capture || reverse)} />
           </div>
         )}
       </div>

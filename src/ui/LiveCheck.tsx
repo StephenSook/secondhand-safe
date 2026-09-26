@@ -5,6 +5,7 @@ import type { Verdict } from "@/core/verdict";
 import { VERDICT_LABEL } from "@/core/verdict";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 import { SquashButton } from "./SquashButton";
+import { SpeakVerdict } from "./SpeakVerdict";
 
 /** Real label values from real CPSC recalls, plus two that show the edge rules. */
 const SAMPLES = [
@@ -136,6 +137,7 @@ export function LiveCheck() {
                     </div>
                   </div>
                 )}
+                <SpeakVerdict kind={v.kind} />
                 <p className="mt-4 text-xs font-bold text-ink/50">Index as of {v.asOf} · answered in {res?.ms} ms</p>
               </div>
             )}
