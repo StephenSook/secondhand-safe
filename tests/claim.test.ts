@@ -90,6 +90,26 @@ describe("one settlement per deal", () => {
     expect(store.docs.has("shs-10")).toBe(false);
   });
 
+  it("an unfinished claim never masks a final deal record: active and expired, CAPTURED and REVERSED", async () => {
+    for (const recorded of ["CAPTURED", "REVERSED"]) {
+      for (const expired of [false, true]) {
+        const store = memoryClaims<R>();
+        let t = 2_000_000;
+        const now = () => t;
+        const sleep = async (ms: number) => { t += ms; };
+        // a request settled at Visa and recordSettlement wrote the deal record, but store.finish failed
+        store.docs.set("shs-14", { _id: "shs-14", by: "lost-write", at: t, expiresAt: expired ? t - 1 : t + CLAIM_TTL_MS });
+        const calls: string[] = [];
+        const finalStatus = async () => recorded;
+        for (const claim of [true, false]) {
+          expect(await settleOnce("shs-14", visaCall("CAPTURED", "retry", calls, 0), { store, claim, finalStatus, now, sleep, log: quiet }),
+            `${recorded} expired=${expired} claim=${claim}`).toEqual({ kind: "final", status: recorded });
+        }
+        expect(calls).toHaveLength(0);
+      }
+    }
+  });
+
   it("a deal record that cannot be read: unavailable, NO Visa call", async () => {
     const store = memoryClaims<R>();
     const calls: string[] = [];

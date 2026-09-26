@@ -17,8 +17,9 @@ import { getDb } from "@/server/db/mongo";
  *   (recordSettlement) and Visa are where that outcome is confirmed;
  * - if the result cannot be stored after Visa answered, this caller still gets Visa's real answer, and later
  *   callers get "busy" and then "uncertain", never a made-up REFUSED;
- * - with no claim yet, the deal record is read before one is taken: a deal it already shows as final (settled
- *   before claims existed, or by the sweeper) is answered from it ("final"), never settled again.
+ * - the deal record is read before a claim is taken, and before a claim without a result is reported as busy or
+ *   uncertain: a deal it already shows as final (settled before claims existed, by the sweeper, or by a request
+ *   whose result write failed) is answered from it ("final"), never settled again.
  * A scan that moves no money (NEEDS_CHECK, UNREADABLE) never takes a claim and calls no Visa API, but it goes
  * through the same reads, so it never reports HELD over a settlement it could have seen.
  */
@@ -93,20 +94,25 @@ export async function settleOnce<R>(dealId: string, run: () => Promise<R>, o: Cl
 
   async function decide(st: ClaimStore<R>): Promise<"claimed" | "free" | Outcome<R>> {
     const deadline = now() + WAIT_MS;
+    // a claim without a result is never the last word: the deal record may already show the final outcome
+    const recorded = async (): Promise<Outcome<R> | null> => {
+      const status = o.finalStatus ? await o.finalStatus() : null;
+      return status ? { kind: "final", status } : null;
+    };
     for (;;) {
       const t = now();
       const cur = await st.get(dealId);
       if (cur?.result !== undefined) return { kind: "replayed", result: cur.result };
-      if (cur && cur.expiresAt <= t) return { kind: "uncertain" };
+      if (cur && cur.expiresAt <= t) return (await recorded()) ?? { kind: "uncertain" };
       if (!cur) {
-        const status = o.finalStatus ? await o.finalStatus() : null;
-        if (status) return { kind: "final", status };
+        const f = await recorded();
+        if (f) return f;
         if (!o.claim) return "free"; // nothing settled or settling
         if (await st.insert({ _id: dealId, by, at: t, expiresAt: t + CLAIM_TTL_MS })) return "claimed";
         if (t >= deadline) return { kind: "busy" };
         continue; // another request claimed it between the read and the insert: read again
       }
-      if (t >= deadline) return { kind: "busy" };
+      if (t >= deadline) return (await recorded()) ?? { kind: "busy" };
       await sleep(POLL_MS);
     }
   }

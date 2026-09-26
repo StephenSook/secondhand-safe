@@ -103,9 +103,9 @@ Safety console at `/trust`), the Gemini label reader (keyless: Vercel OIDC to Go
 Identity Federation), ElevenLabs voice, the Solana devnet passport, and a daily hold sweeper.
 Known limits of the settlement path, all failing toward "no money moves":
 - One settlement per deal is enforced with an atomic claim in MongoDB Atlas (`settle_claims`) before any Visa call. The deal record is read first, and a deal it already shows as ended is never settled again. If Atlas is down, `/api/pickup` refuses to settle (503, `visaCalled: false`). A scan that moves no money then reports UNKNOWN, not HELD.
-- A claim is never taken over. If an attempt dies before storing its result, later scans of that deal get UNKNOWN, with no second Visa call. The deal record and the Visa Business Center then hold the answer.
+- A claim is never taken over. If an attempt dies before storing its result, later scans of that deal get the final status from the deal record when it has one, otherwise UNKNOWN. There is never a second Visa call.
 - A UPC counts only with a valid GTIN check digit. An invalid one is ignored: alone it reads UNREADABLE, and with a model that matched nothing it reads NEEDS_CHECK. Either way the hold stays.
-- A GTIN-14 case code (indicator 1 to 8) is also checked as the item it contains. Recall UPCs printed incomplete (10 or 11 digits) cannot be matched for certain, so any code containing one keeps the hold (NEEDS_CHECK).
+- A GTIN-14 case code (indicator 1 to 8) is also checked as the item it contains. Recall UPCs printed incomplete (10 or 11 digits) or with a wrong check digit (9 of the 185 longer ones, such as a truncated code) cannot be matched for certain, so any code containing one keeps the hold (NEEDS_CHECK).
 
 Sandbox only: no real money moves. The deals on `/board` and `/trust` are our own demo purchases and our
 automated end-to-end tests, which run against this live site.
