@@ -66,7 +66,7 @@ so do not quote one.)
 scanned on 2026-09-26. Facebook Marketplace is not scraped (their terms forbid it).
 
 **What is still open?** The buyer's phone reports the scan today; a seller-side confirmation needs a shared
-store. The Solana item passport is built but waits on devnet funds. The recall index is as of its build date.
+store. The recall index is as of its build date. The Solana passport is on devnet, not mainnet.
 
 **Can I check it myself?** Yes. `curl ".../api/check?model=BHC001&batch=202408"`, or connect any MCP client to
 `/api/mcp` and call `recall_check`. The code is public.

@@ -134,11 +134,11 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 3.8 | Aardvark-style motion system + art (design study docs/design/aardvark-reference.md) | `src/ui/**`, `public/art/**` | **Stephen** | ✅ | n/a | Preloader stroke wipe, elastic words, fanned cards, pinned scroll-scrub scan (generated, captioned), floating gear, parallax footer. |
 | 3.9 | Microform card entry (replaces the server-side sandbox test card) | `src/server/visa/microform.ts`, `/pickup` | **Stephen** (took over) | ✅ | 0.6 | Visa Microform v2 fields, transient token into authorize(); live e2e green; review round 1 fixed (loading guard, card source on the hold, expiry, origin, rate limit). |
 | 3.10 | TAP-signed agent checkout (RFC 9421 ed25519) + tamper demo | `src/server/tap/**` | **Stephen** | ✅ | 1.5 | Same as 1.1. | | | |
-| 3.11 | Atlas: recalls + deals + listings, change stream -> Deal Board | `src/server/db/**`, `/board` | **Tylin** (DB) + **Stephen** (board) | ⬜ | 0.5 | Needs the Atlas M0 account first. |
-| 3.12 | Solana devnet passport + memo of the verification hash | `src/server/solana/**` | **Stephen** (took over) | 🟡 | 1.5 | Built: hand-built Memo tx anchors SHA-256 of the pickup record at CAPTURE; /passport/<sig> recomputes it. Devnet simulation accepted the signed tx. Waiting on faucet SOL for devnet wallet CrXh6kWDKAHaMHc43TbWX8mw9pdqvGRRh6eH9E5mdhjW (Stephen: faucet.solana.com). | |
+| 3.11 | Atlas: recalls + deals + listings, change stream -> Deal Board | `src/server/db/**`, `/board` | **Tylin** (DB) + **Stephen** (board) | ✅ | 0.5 | Atlas M0 "lullabuy": deals recorded via waitUntil; /board; e2e seller.spec on prod. |
+| 3.12 | Solana devnet passport + memo of the verification hash | `src/server/solana/**` | **Stephen** (took over) | ✅ | 1.5 | Live: devnet wallet funded (faucet, Stephen GitHub auth); capture writes a Memo passport; /passport verifies signer + success + hash; e2e passport.spec on prod. | |
 | 3.13 | NHTSA child-seat recalls into the index | `data/build_recall_index.py` | **Stephen** | ✅ | 1.2 | 71 NHTSA child-restraint campaigns with manufacture date ranges; date rule in the matcher (PR #8). | |
 | 3.14 | Expo iOS pickup scanner | `mobile/**` | **Stephen** | ⬜ | 1.9 | The PWA is the judge path. |
-| 3.15 | Seller-side confirmation of the pickup scan (today the buyer's device reports it; review finding) | `/pickup`, `src/app/api/pickup/**` | **Tylin** + **Stephen** | ⬜ | 1.5 | Seller confirms the verdict on their phone, or the photo evidence is verified server-side, before a reversal. |
+| 3.15 | Seller-side confirmation of the pickup scan (today the buyer's device reports it; review finding) | `/pickup`, `src/app/api/pickup/**` | **Tylin** + **Stephen** | ✅ | 1.5 | Seller live view /deal/<id> via QR on the buyer pickup screen (reads Atlas every 3 s). The buyer device still reports the scan; noted in Q&A. |
 
 ### Phase 4: Freeze + submit (Sat 9 PM to Sun 8 AM)
 
