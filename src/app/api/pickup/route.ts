@@ -16,6 +16,8 @@ const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "dr
  * NO_MATCH captures, RECALL_MATCH / BANNED_TYPE reverses, anything uncertain keeps the hold.
  * Once a deal has settled, every later request returns that stored answer with `replayed: true` (no Visa call).
  * 409 `{settling: true, visaCalled: false}`: another request is settling this deal right now; this one did nothing.
+ * 409 `{uncertain: true, status: "UNKNOWN", visaCalled: false}`: an earlier attempt never stored its result.
+ * 503 `{visaCalled: false, placed: false}`: the one-settlement claim could not be taken, so Visa was not called.
  */
 export async function POST(request: Request) {
   const b = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -66,6 +68,16 @@ export async function POST(request: Request) {
       at: new Date().toISOString(),
     };
   }, { store: await mongoClaims(), claim: decide(verdict) !== "hold" });
+  if (outcome.kind === "unavailable") {
+    return Response.json({ dealId: deal.dealId, visaCalled: false, placed: false,
+      error: "Could not start the settlement (the deal store did not answer). Nothing moved at Visa; try again in a moment." },
+      { status: 503, headers: noStore });
+  }
+  if (outcome.kind === "uncertain") {
+    return Response.json({ dealId: deal.dealId, status: "UNKNOWN", uncertain: true, visaCalled: false,
+      error: "The result of an earlier settlement attempt for this deal is not confirmed, so nothing was sent to Visa. Check the deal page or the Visa Business Center." },
+      { status: 409, headers: noStore });
+  }
   if (outcome.kind === "busy") {
     return Response.json({ dealId: deal.dealId, settling: true, visaCalled: false,
       error: "This hold is already being settled by another scan. This request did not reach Visa; the result shows on the deal in a moment." },

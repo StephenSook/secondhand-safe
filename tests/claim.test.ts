@@ -46,22 +46,20 @@ describe("one settlement per deal", () => {
     expect(noMoney).toEqual({ kind: "replayed", result: { status: "REVERSED", by: "first" } });
   });
 
-  it("a claim whose holder died expires and is taken over, so a hold is never locked forever", async () => {
+  it("an expired claim with no stored result is UNKNOWN: never a second Visa call, never a takeover", async () => {
     const store = memoryClaims<R>();
     let t = 1_000_000;
     store.docs.set("shs-4", { _id: "shs-4", by: "crashed", at: t, expiresAt: t + CLAIM_TTL_MS }); // never finished
     const calls: string[] = [];
-    // before expiry: waits (bounded), then says busy without calling Visa
     const now = () => t;
     const sleep = async (ms: number) => { t += ms; };
-    const early = await settleOnce("shs-4", visaCall("CAPTURED", "early", calls), { store, claim: true, now, sleep, log: quiet });
-    expect(early).toEqual({ kind: "busy" });
-    expect(calls).toHaveLength(0);
+    // while it may still be running: waits (bounded), then busy
+    expect(await settleOnce("shs-4", visaCall("CAPTURED", "early", calls), { store, claim: true, now, sleep, log: quiet })).toEqual({ kind: "busy" });
     t += CLAIM_TTL_MS;
-    const late = await settleOnce("shs-4", visaCall("CAPTURED", "late", calls), { store, claim: true, now, sleep, log: quiet });
-    expect(late).toEqual({ kind: "ran", result: { status: "CAPTURED", by: "late" } });
-    expect(calls).toEqual(["CAPTURED:late"]);
-    expect(store.docs.get("shs-4")?.result).toEqual({ status: "CAPTURED", by: "late" });
+    expect(await settleOnce("shs-4", visaCall("CAPTURED", "late", calls), { store, claim: true, now, sleep, log: quiet })).toEqual({ kind: "uncertain" });
+    expect(await settleOnce("shs-4", visaCall("HELD", "no-money", calls), { store, claim: false, now, sleep, log: quiet })).toEqual({ kind: "uncertain" });
+    expect(calls).toHaveLength(0);
+    expect(store.docs.get("shs-4")?.by).toBe("crashed");
   });
 
   it("a scan that moves no money never takes the claim, so a later capture still can", async () => {
@@ -73,33 +71,45 @@ describe("one settlement per deal", () => {
     expect(cap.kind).toBe("ran");
   });
 
-  it("without a store (Atlas not configured) it runs once and logs it: Visa stays the only guard", async () => {
+  it("without a store (Atlas not configured): no claim, so NO Visa call; a no-money scan still runs", async () => {
     const log = vi.fn();
     const calls: string[] = [];
-    const out = await settleOnce("shs-6", visaCall("CAPTURED", "x", calls, 0), { store: null, claim: true, log });
-    expect(out.kind).toBe("unclaimed");
-    expect(calls).toHaveLength(1);
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/without a claim/));
+    expect(await settleOnce("shs-6", visaCall("CAPTURED", "x", calls, 0), { store: null, claim: true, log })).toEqual({ kind: "unavailable" });
+    expect(calls).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/refused before Visa/));
+    expect((await settleOnce("shs-6", visaCall("HELD", "needs-check", calls, 0), { store: null, claim: false, log })).kind).toBe("ran");
   });
 
-  it("a store that fails before the claim runs the settlement once (never twice) and logs it", async () => {
-    const broken: ClaimStore<R> = {
-      insert: async () => { throw new Error("Atlas down"); }, get: async () => null, takeOver: async () => false, finish: async () => {},
-    };
+  it("a store that fails before the claim is taken: NO Visa call", async () => {
+    const broken: ClaimStore<R> = { insert: async () => { throw new Error("Atlas down"); }, get: async () => null, finish: async () => false };
     const log = vi.fn();
     const calls: string[] = [];
-    const out = await settleOnce("shs-7", visaCall("CAPTURED", "x", calls, 0), { store: broken, claim: true, log });
-    expect(out.kind).toBe("unclaimed");
-    expect(calls).toHaveLength(1);
+    expect(await settleOnce("shs-7", visaCall("CAPTURED", "x", calls, 0), { store: broken, claim: true, log })).toEqual({ kind: "unavailable" });
+    expect(calls).toHaveLength(0);
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/Atlas down/));
   });
 
-  it("a failed result write never repeats the Visa call", async () => {
+  it("the store is lost after Visa succeeded: this caller gets the real answer; a retry is busy, then UNKNOWN, with no second call", async () => {
     const store = memoryClaims<R>();
     store.finish = async () => { throw new Error("write lost"); };
+    let t = 5_000_000;
+    const now = () => t;
+    const sleep = async (ms: number) => { t += ms; };
     const calls: string[] = [];
-    const out = await settleOnce("shs-8", visaCall("CAPTURED", "x", calls, 0), { store, claim: true, log: quiet });
-    expect(out.kind).toBe("ran");
-    expect(calls).toHaveLength(1);
+    const first = await settleOnce("shs-8", visaCall("CAPTURED", "first", calls, 0), { store, claim: true, now, sleep, log: quiet });
+    expect(first).toEqual({ kind: "ran", result: { status: "CAPTURED", by: "first" } });
+    expect(await settleOnce("shs-8", visaCall("REVERSED", "retry", calls, 0), { store, claim: true, now, sleep, log: quiet })).toEqual({ kind: "busy" });
+    t += CLAIM_TTL_MS;
+    expect(await settleOnce("shs-8", visaCall("REVERSED", "retry", calls, 0), { store, claim: true, now, sleep, log: quiet })).toEqual({ kind: "uncertain" });
+    expect(calls).toEqual(["CAPTURED:first"]);
+  });
+
+  it("finish only stores on the claim this request owns, once", async () => {
+    const store = memoryClaims<R>();
+    store.docs.set("shs-9", { _id: "shs-9", by: "owner", at: 0, expiresAt: 1 });
+    expect(await store.finish("shs-9", "someone-else", { status: "CAPTURED", by: "x" })).toBe(false);
+    expect(await store.finish("shs-9", "owner", { status: "CAPTURED", by: "owner" })).toBe(true);
+    expect(await store.finish("shs-9", "owner", { status: "REVERSED", by: "owner" })).toBe(false);
+    expect(store.docs.get("shs-9")?.result).toEqual({ status: "CAPTURED", by: "owner" });
   });
 });

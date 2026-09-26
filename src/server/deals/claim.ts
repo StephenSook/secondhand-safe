@@ -9,11 +9,15 @@ import { getDb } from "@/server/db/mongo";
  * atomic insert): exactly one request calls Visa, and every other request, concurrent or later, gets that
  * request's stored answer instead of calling Visa again.
  *
- * A claim whose holder died (crashed function, timeout) expires after CLAIM_TTL_MS and can be taken over, so a
- * hold is never locked forever; the takeover's Visa call is then refused by Visa if the dead request had already
- * settled it. When Atlas is not configured or not reachable, the claim is skipped and logged: Visa stays the
- * source of truth and itself refuses a second settlement of one authorization (MISSING_AUTH), which is exactly
- * the behaviour before claims existed.
+ * It fails closed, with no retry machinery:
+ * - no claim, no Visa call: when Atlas is not configured, not reachable or erroring, a settlement is refused
+ *   before Visa ("unavailable"; nothing moved, the buyer can try again);
+ * - a claim is never taken over: one older than CLAIM_TTL_MS with no stored result means an earlier attempt may
+ *   have moved money, so the answer is "uncertain" (UNKNOWN), never a second Visa call. The deal record
+ *   (recordSettlement) and Visa are where that outcome is confirmed;
+ * - if the result cannot be stored after Visa answered, this caller still gets Visa's real answer, and later
+ *   callers get "busy" and then "uncertain", never a made-up REFUSED.
+ * A scan that moves no money (NEEDS_CHECK, UNREADABLE) never takes a claim and calls no Visa API.
  */
 
 export const CLAIM_TTL_MS = 2 * 60 * 1000;
@@ -27,21 +31,21 @@ export interface ClaimStore<R> {
   /** true when this call created the claim; false when one already exists */
   insert(c: Claim<R>): Promise<boolean>;
   get(id: string): Promise<Claim<R> | null>;
-  /** replaces an expired, unfinished claim held by `prevBy`; true when this call won it */
-  takeOver(id: string, prevBy: string, now: number, next: Claim<R>): Promise<boolean>;
-  finish(id: string, by: string, result: R): Promise<void>;
+  /** stores the result on the claim this request owns; true only when exactly that claim was updated */
+  finish(id: string, by: string, result: R): Promise<boolean>;
 }
 
 export type Outcome<R> =
   | { kind: "ran"; result: R }
   | { kind: "replayed"; result: R }
-  | { kind: "busy" }
-  | { kind: "unclaimed"; result: R };
+  | { kind: "busy" } // another request holds the claim right now
+  | { kind: "unavailable" } // no claim could be taken: Visa was not called
+  | { kind: "uncertain" }; // an earlier attempt's outcome was never stored: Visa was not called
 
 export interface ClaimOpts<R> {
   store: ClaimStore<R> | null;
-  /** false for a scan that moves no money (NEEDS_CHECK, UNREADABLE): it never takes a claim, but it still returns
-   *  a settlement that already happened, and waits for one in progress */
+  /** false for a scan that moves no money: it takes no claim, but still returns a settlement that already
+   *  happened, and waits for one in progress */
   claim: boolean;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -57,53 +61,46 @@ export async function settleOnce<R>(dealId: string, run: () => Promise<R>, o: Cl
   const log = o.log ?? ((m: string) => console.warn(m));
   const by = o.requestId ?? randomUUID();
   const store = o.store;
-  if (!store) {
-    log(`[claims] no claim store for ${dealId}: settling without a claim (Visa refuses a second settlement)`);
-    return { kind: "unclaimed", result: await run() };
-  }
-  // decide first, run after: a Visa call must never sit inside the catch below, or a store error after it would
-  // run it a second time
-  let action: "claimed" | "free" | Outcome<R>;
-  try {
-    action = await decide();
-  } catch (e) {
-    log(`[claims] claim store failed for ${dealId} (${(e as Error).message}): settling without a claim (Visa refuses a second settlement)`);
-    return { kind: "unclaimed", result: await run() };
-  }
-  if (typeof action !== "string") return action;
-  if (action === "free") return { kind: "ran", result: await run() };
 
-  async function decide(): Promise<"claimed" | "free" | Outcome<R>> {
+  // decide first, run after: run() is never inside the catch, so a store error can never repeat it
+  let decision: "claimed" | "free" | Outcome<R>;
+  try {
+    decision = store ? await decide(store) : o.claim ? { kind: "unavailable" } : "free";
+  } catch (e) {
+    log(`[claims] claim store failed for ${dealId}: ${(e as Error).message}`);
+    decision = o.claim ? { kind: "unavailable" } : "free";
+  }
+  if (decision === "free") return { kind: "ran", result: await run() }; // moves no money
+  if (decision !== "claimed") {
+    if (decision.kind === "unavailable") log(`[claims] no claim for ${dealId}: settlement refused before Visa`);
+    return decision;
+  }
+  const result = await run();
+  let stored = false;
+  try {
+    stored = await store!.finish(dealId, by, result);
+  } catch (e) {
+    log(`[claims] result write failed for ${dealId}: ${(e as Error).message}`);
+  }
+  if (!stored) log(`[claims] result for ${dealId} not stored: later requests get busy, then UNKNOWN`);
+  return { kind: "ran", result };
+
+  async function decide(st: ClaimStore<R>): Promise<"claimed" | "free" | Outcome<R>> {
     const deadline = now() + WAIT_MS;
     for (;;) {
       const t = now();
-      const fresh: Claim<R> = { _id: dealId, by, at: t, expiresAt: t + CLAIM_TTL_MS };
-      if (o.claim && (await store!.insert(fresh))) return "claimed";
-      const cur = await store!.get(dealId);
+      if (o.claim && (await st.insert({ _id: dealId, by, at: t, expiresAt: t + CLAIM_TTL_MS }))) return "claimed";
+      const cur = await st.get(dealId);
       if (cur?.result !== undefined) return { kind: "replayed", result: cur.result };
-      if (!cur) {
-        if (!o.claim) return "free"; // nothing settled or settling: a no-money scan runs
-        continue; // the claim vanished between insert and read: try again
-      }
-      if (cur.expiresAt <= t) {
-        if (!o.claim) return "free"; // the holder died: nothing is settling any more
-        if (await store!.takeOver(dealId, cur.by, t, fresh)) { log(`[claims] ${dealId}: took over an expired claim`); return "claimed"; }
-        continue;
-      }
-      if (now() >= deadline) return { kind: "busy" };
+      if (!cur && !o.claim) return "free"; // nothing settled or settling
+      if (cur && cur.expiresAt <= t) return { kind: "uncertain" };
+      if (t >= deadline) return { kind: "busy" };
       await sleep(POLL_MS);
     }
   }
-  const result = await run();
-  try {
-    await store.finish(dealId, by, result);
-  } catch (e) {
-    log(`[claims] could not store the result for ${dealId} (${(e as Error).message}); the claim expires in ${CLAIM_TTL_MS / 1000} s`);
-  }
-  return { kind: "ran", result };
 }
 
-/** A hard deadline on every store call: a hung Atlas becomes an error (and the unclaimed path), never a hang. */
+/** A hard deadline on every store call: a hung Atlas becomes an error (and no Visa call), never a hang. */
 function within<T>(p: Promise<T>, ms = 4000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([p, new Promise<never>((_, bad) => { timer = setTimeout(() => bad(new Error(`timed out after ${ms} ms`)), ms); })])
@@ -132,13 +129,9 @@ export async function mongoClaims<R>(): Promise<ClaimStore<R> | null> {
       }
     },
     get: (id) => within(c.findOne({ _id: id } as never)) as Promise<Claim<R> | null>,
-    async takeOver(id, prevBy, t, next) {
-      const r = await within(c.findOneAndUpdate({ _id: id, by: prevBy, result: { $exists: false }, expiresAt: { $lte: t } } as never,
-        { $set: { by: next.by, at: next.at, expiresAt: next.expiresAt } }));
-      return !!r;
-    },
     async finish(id, by, result) {
-      await within(c.updateOne({ _id: id, by } as never, { $set: { result } } as never));
+      const r = await within(c.updateOne({ _id: id, by, result: { $exists: false } } as never, { $set: { result } } as never));
+      return r.modifiedCount === 1;
     },
   };
 }
@@ -150,12 +143,11 @@ export function memoryClaims<R>(): ClaimStore<R> & { docs: Map<string, Claim<R>>
     docs,
     async insert(c) { if (docs.has(c._id)) return false; docs.set(c._id, { ...c }); return true; },
     async get(id) { const d = docs.get(id); return d ? { ...d } : null; },
-    async takeOver(id, prevBy, t, next) {
+    async finish(id, by, result) {
       const d = docs.get(id);
-      if (!d || d.by !== prevBy || d.result !== undefined || d.expiresAt > t) return false;
-      docs.set(id, { ...d, by: next.by, at: next.at, expiresAt: next.expiresAt });
+      if (!d || d.by !== by || d.result !== undefined) return false;
+      d.result = result;
       return true;
     },
-    async finish(id, by, result) { const d = docs.get(id); if (d && d.by === by) d.result = result; },
   };
 }

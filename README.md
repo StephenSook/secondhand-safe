@@ -101,6 +101,12 @@ and matcher, the classifier, the Visa Acceptance sandbox hold (Microform, Token 
 linked promotions), the Trusted Agent Protocol, MongoDB Atlas (deal store, board, seller view, Trust and
 Safety console at `/trust`), the Gemini label reader (keyless: Vercel OIDC to Google Cloud Workload
 Identity Federation), ElevenLabs voice, the Solana devnet passport, and a daily hold sweeper.
+Known limits of the settlement path, all failing toward "no money moves":
+- One settlement per deal is enforced with an atomic claim in MongoDB Atlas (`settle_claims`) before any Visa call. If Atlas is down, `/api/pickup` refuses to settle (503, `visaCalled: false`) rather than settle without the claim.
+- A claim is never taken over. If an attempt dies before storing its result, later scans of that deal get UNKNOWN, with no second Visa call. The deal record and the Visa Business Center then hold the answer.
+- A UPC counts only with a valid GTIN check digit. An invalid one is ignored, and alone it reads as UNREADABLE (the hold stays).
+- Recall UPCs printed with 11 digits cannot be matched for certain, so a match on one keeps the hold (NEEDS_CHECK) and never reverses on its own.
+
 Sandbox only: no real money moves. The deals on `/board` and `/trust` are our own demo purchases and our
 automated end-to-end tests, which run against this live site.
 
