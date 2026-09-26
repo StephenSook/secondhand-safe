@@ -97,7 +97,8 @@ export function PickupScanner() {
       const savedDeal = sessionStorage.getItem(DEAL_KEY);
       const restoredDeal = savedDeal ? (JSON.parse(savedDeal) as Deal) : null;
       // a hold past its 12 h pickup-token life can no longer be settled here (the daily sweeper releases it at Visa)
-      if (restoredDeal && (restoredDeal.status === "HELD" || restoredDeal.status === "UNKNOWN") && stale(restoredDeal.at)) sessionStorage.removeItem(DEAL_KEY);
+      // only an unsettled HELD hold is dropped; an UNKNOWN settlement stays until the buyer acknowledges it
+      if (restoredDeal && restoredDeal.status === "HELD" && stale(restoredDeal.at)) sessionStorage.removeItem(DEAL_KEY);
       else if (restoredDeal) window.setTimeout(() => setDeal(restoredDeal), 0);
       const parsed = parseSaved(localStorage.getItem(SAVED_KEY));
       if (parsed) window.setTimeout(() => setSaved(parsed), 0);
