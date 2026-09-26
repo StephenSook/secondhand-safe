@@ -7,6 +7,7 @@ export default defineConfig({
   testDir: "tests/e2e",
   timeout: 240_000,
   retries: process.env.CI ? 1 : 0,
+  workers: 1, // 8 GB dev machine; the on-device model test loads ~90 MB
   use: { baseURL: base, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: process.env.BASE_URL

@@ -10,6 +10,16 @@ import { SpeakVerdict } from "./SpeakVerdict";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 
 type Health = { integrations: Record<string, boolean> };
+type Deal = {
+  dealId: string; listing: string; amountUsd: number; token: string; authId: string;
+  status: "HELD" | "CAPTURED" | "REVERSED"; settlementId?: string; at: string;
+};
+const DEAL_KEY = "shs-deal";
+const LISTINGS = [
+  { label: "Harppa high chair (table prop with the printed CPSC 26-061 label)", amountUsd: 64 },
+  // not $40.00: the sandbox simulator returns AVS_FAILED / PENDING_REVIEW for that exact amount
+  { label: "Used baby item from our table", amountUsd: 45 },
+];
 const CLASS_NAME: Record<string, string> = {
   inclined_or_inbed_sleeper: "infant sleeper", crib_bumper: "crib bumper", drop_side_crib: "drop-side crib", other: "no banned type",
 };
@@ -46,12 +56,41 @@ export function PickupScanner() {
   const [clsMsg, setClsMsg] = useState("");
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [busy, setBusy] = useState("");
+  const [deal, setDeal] = useState<Deal | null>(null);
+  const [dealErr, setDealErr] = useState("");
+  const [pick, setPick] = useState(0);
   const decisionRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
+    try {
+      const saved = sessionStorage.getItem(DEAL_KEY);
+      if (saved) window.setTimeout(() => setDeal(JSON.parse(saved) as Deal), 0);
+    } catch {}
   }, []);
+
+  const saveDeal = (d: Deal | null) => {
+    setDeal(d);
+    try { if (d) sessionStorage.setItem(DEAL_KEY, JSON.stringify(d)); else sessionStorage.removeItem(DEAL_KEY); } catch {}
+  };
+
+  async function startDeal() {
+    setDealErr("");
+    setBusy("Asking Visa to authorize and hold…");
+    try {
+      const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at });
+      setVerdict(null);
+    } catch (e) {
+      setDealErr((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function classify(file: Blob) {
     setClsMsg("Loading the banned-type model on this device (first time about 90 MB)…");
@@ -108,13 +147,21 @@ export function PickupScanner() {
   }
 
   async function check(f = fields, c = cls) {
-    setBusy("Checking recalls…");
-    const r = await fetch("/api/check", {
+    const settling = deal?.status === "HELD";
+    setBusy(settling ? "Checking recalls and settling the hold with Visa…" : "Checking recalls…");
+    const payload = { ...f, cls: c ? { cls: c.cls, p: c.p } : undefined };
+    const r = await fetch(settling ? "/api/pickup" : "/api/check", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...f, cls: c ? { cls: c.cls, p: c.p } : undefined }),
+      body: JSON.stringify(settling ? { ...payload, token: deal!.token } : payload),
     });
-    const j = (await r.json()) as { verdict: Verdict };
+    const j = (await r.json()) as { verdict: Verdict; status?: Deal["status"]; visa?: { id?: string }; error?: string };
+    if (!r.ok || !j.verdict) {
+      setBusy("");
+      setDealErr(j.error ?? `HTTP ${r.status}`);
+      return;
+    }
     setVerdict(j.verdict);
+    if (settling && j.status) saveDeal({ ...deal!, status: j.status, settlementId: j.visa?.id });
     setBusy("");
     requestAnimationFrame(() => {
       if (prefersReducedMotion() || !decisionRef.current) return;
@@ -166,12 +213,45 @@ export function PickupScanner() {
       </div>
 
       <div aria-live="polite" className="grid gap-5">
-        <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${visaLive ? "bg-amber" : "bg-sand"}`}>
-          <p className="text-sm font-extrabold tracking-wider">PAYMENT</p>
-          <p className="display text-4xl mt-1">{visaLive ? "HELD" : "Visa hold not connected here"}</p>
-          <p className="mt-2 font-semibold text-ink/80">
-            {visaLive ? "The buyer's Visa authorization is held until this check decides." : "This deployment has no Visa sandbox keys yet, so the check below decides what would happen to the hold."}
-          </p>
+        <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${!visaLive ? "bg-sand" : !deal ? "bg-paper" : deal.status === "HELD" ? "bg-amber" : deal.status === "CAPTURED" ? "bg-green text-paper" : "bg-red text-paper"}`}>
+          <p className="text-sm font-extrabold tracking-wider">PAYMENT · VISA ACCEPTANCE SANDBOX</p>
+          {!visaLive && (
+            <>
+              <p className="display text-4xl mt-1">Visa hold not connected here</p>
+              <p className="mt-2 font-semibold text-ink/80">This deployment has no Visa sandbox keys yet, so the check decides what would happen to the hold.</p>
+            </>
+          )}
+          {visaLive && !deal && (
+            <>
+              <p className="display text-4xl mt-1">Agree on a price</p>
+              <div className="mt-4 grid gap-2">
+                {LISTINGS.map((l, i) => (
+                  <label key={l.label} className="flex items-center gap-3 rounded-xl border-2 border-ink bg-sand/60 px-3 py-2 font-semibold cursor-pointer">
+                    <input type="radio" name="listing" checked={pick === i} onChange={() => setPick(i)} />
+                    <span className="flex-1">{l.label}</span><b>${l.amountUsd.toFixed(2)}</b>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4"><SquashButton onClick={startDeal} accent="var(--amber)">Agree and hold the payment</SquashButton></div>
+              <p className="mt-3 text-xs font-semibold text-ink/60">Authorizes Visa&apos;s sandbox test card with capture off. Card entry by Microform is next.</p>
+            </>
+          )}
+          {visaLive && deal && (
+            <>
+              <p className="display text-5xl mt-1">{deal.status}</p>
+              <p className="mt-1 display text-2xl">${deal.amountUsd.toFixed(2)}</p>
+              <p className="mt-1 font-semibold opacity-80">{deal.listing}</p>
+              <dl className="mt-3 text-xs font-mono grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 opacity-90">
+                <dt>authorization</dt><dd className="break-all">{deal.authId}</dd>
+                {deal.settlementId && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
+                <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
+              </dl>
+              {deal.status === "HELD"
+                ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>
+                : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">Start a new deal</button>}
+            </>
+          )}
+          {dealErr && <p className="mt-3 rounded-xl bg-paper text-red-deep p-3 font-bold">{dealErr}</p>}
         </div>
         {cls && (
           <div className="rounded-[2rem] bg-aqua-soft border-[3px] border-ink p-6">
