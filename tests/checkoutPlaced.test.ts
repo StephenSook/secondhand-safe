@@ -47,6 +47,29 @@ describe("checkout says explicitly when no hold was placed, and never claims it 
     expect(j.error).toMatch(/MAY remain/);
   });
 
+  it("a PARTIAL_AUTHORIZED is released; placed false only when the release is confirmed", async () => {
+    visaEnv();
+    const partial = { id: "p1", status: "PARTIAL_AUTHORIZED", orderInformation: { amountDetails: { authorizedAmount: "30.00" } } };
+    const f1 = vi.fn().mockResolvedValueOnce(reply(201, partial)).mockResolvedValueOnce(reply(201, { id: "r1", status: "REVERSED" }));
+    vi.stubGlobal("fetch", f1);
+    const ok = await (await post({ listing: "Crib", amountUsd: 64 })).json();
+    expect(ok).toMatchObject({ placed: false });
+    expect(JSON.parse(String((f1.mock.calls[1] as unknown as [string, RequestInit])[1].body)).reversalInformation.amountDetails.totalAmount).toBe("30.00");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(reply(201, partial)).mockResolvedValueOnce(reply(503, {})));
+    const bad = await (await post({ listing: "Crib", amountUsd: 64 })).json();
+    expect(bad).toMatchObject({ uncertain: true });
+    expect(bad.placed).toBeUndefined();
+  });
+
+  it("asks Visa never to partially authorize", async () => {
+    visaEnv();
+    const f = vi.fn().mockResolvedValueOnce(reply(201, { id: "d0", status: "DECLINED" }));
+    vi.stubGlobal("fetch", f);
+    await post({ listing: "Crib", amountUsd: 50 });
+    const body = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    expect(body.processingInformation).toMatchObject({ capture: false, authorizationOptions: { partialAuthIndicator: false } });
+  });
+
   it("an unreadable authorization reply is uncertain; a readable decline is placed false", async () => {
     visaEnv();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(reply(500, {})));

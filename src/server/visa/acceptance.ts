@@ -101,7 +101,12 @@ export function authorize(creds: VisaCreds, opts: { dealId: string; amountUsd: n
   const payload = {
     clientReferenceInformation: { code: opts.dealId },
     // saveCard asks Visa's Token Management Service to vault the card and return a customer token
-    processingInformation: opts.saveCard ? { capture: false, actionList: ["TOKEN_CREATE"], actionTokenTypes: ["customer", "paymentInstrument"] } : { capture: false },
+    // partialAuthIndicator false: never hold part of the agreed price (a partial hold would be a hold the buyer
+    // did not agree to); checkout still releases one if a PARTIAL_AUTHORIZED ever comes back
+    processingInformation: {
+      capture: false, authorizationOptions: { partialAuthIndicator: false },
+      ...(opts.saveCard ? { actionList: ["TOKEN_CREATE"], actionTokenTypes: ["customer", "paymentInstrument"] } : {}),
+    },
     orderInformation: { amountDetails: { totalAmount: amount(opts.amountUsd), currency: "USD" },
       // Cybersource's documented sandbox test billing address: the sandbox's AVS simulation expects it
       // (a Georgia Tech address came back AUTHORIZED_PENDING_REVIEW / AVS_FAILED).
