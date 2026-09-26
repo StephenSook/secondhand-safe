@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { STORAGE_BLOCKED, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth } from "./holdGuard";
+import { STORAGE_BLOCKED, stale, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth } from "./holdGuard";
 import { CardFields, type CardState } from "./CardFields";
 import { DEMO_TABLE } from "@/core/demoTable";
 import type { Verdict } from "@/core/verdict";
@@ -95,7 +95,10 @@ export function PickupScanner() {
     fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
     try {
       const savedDeal = sessionStorage.getItem(DEAL_KEY);
-      if (savedDeal) window.setTimeout(() => setDeal(JSON.parse(savedDeal) as Deal), 0);
+      const restoredDeal = savedDeal ? (JSON.parse(savedDeal) as Deal) : null;
+      // a hold past its 12 h pickup-token life can no longer be settled here (the daily sweeper releases it at Visa)
+      if (restoredDeal && (restoredDeal.status === "HELD" || restoredDeal.status === "UNKNOWN") && stale(restoredDeal.at)) sessionStorage.removeItem(DEAL_KEY);
+      else if (restoredDeal) window.setTimeout(() => setDeal(restoredDeal), 0);
       const parsed = parseSaved(localStorage.getItem(SAVED_KEY));
       if (parsed) window.setTimeout(() => setSaved(parsed), 0);
     } catch {}

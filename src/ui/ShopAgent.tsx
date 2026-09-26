@@ -1,6 +1,6 @@
 "use client";
 
-import { useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type Ref } from "react";
+import { useImperativeHandle, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import Link from "next/link";
 import { DEAL_KEY, STORAGE_BLOCKED, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth, type Held } from "./holdGuard";
 import { SquashButton } from "./SquashButton";
@@ -60,7 +60,8 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   // a reload must not forget a hold that is still open at Visa (one open hold at a time); read without an effect
   const [, bump] = useState(0);
   const stored = useSyncExternalStore(noSubscribe, readBoth, () => "\n");
-  const restored = useMemo(() => openHold(stored), [stored]);
+  // re-evaluated on every render (not memoized), so a hold that ages past its 12 h life stops blocking
+  const restored = openHold(stored);
   const shownHeld = held ?? restored;
 
   /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
