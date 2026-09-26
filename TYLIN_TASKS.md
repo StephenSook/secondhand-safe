@@ -7,6 +7,26 @@ Legend: [ ] not started · [-] in progress · [x] done · [!] blocked
 
 ---
 
+## Read this first (Sat 4 AM, from Stephen's session)
+
+While you slept, the blocking backend pieces were built so the frontend could run end to end. `git pull`
+before anything. Already done and live at https://secondhand-safe-web.vercel.app:
+
+- Scaffold, env contract, CI (0.2 to 0.4); CPSC recall index + matcher (1.2, 1.3); public API (2.2); deploy +
+  probe (2.1).
+- **Visa loop (PR #7):** `src/server/visa/acceptance.ts` signs requests (HTTP Signature); `/api/checkout`
+  authorizes with capture off (the hold); `/api/pickup` captures or reverses the real hold. Verified live on
+  Cybersource's PUBLIC sample merchant `testrest`.
+
+Your highest-value next steps:
+1. Put YOUR Visa sandbox keys in `.env.local` (`VISA_MERCHANT_ID`, `VISA_KEY_ID`, `VISA_SECRET_KEY`), run
+   `node --env-file=.env.local node_modules/vitest/vitest.mjs run --config vitest.live.config.ts tests/visa.live.test.ts`,
+   and confirm the transactions appear in your Business Center (open question Q3).
+2. Microform card entry (3.9), TAP agent checkout (3.10), Atlas + change stream for the board (3.11),
+   Solana devnet passport (3.12). All listed in PLAN.md with the files to touch.
+
+---
+
 ## Keys to gather (you sign up yourself; values go in `.env.local`, never in git)
 
 | Name | Where you get it | What it unblocks |
