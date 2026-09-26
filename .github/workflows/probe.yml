@@ -2,6 +2,7 @@ name: probe
 
 # Live probe of the judged deployment (PLAN 2.1). Stays ON through judging. Offset minutes because
 # GitHub deprioritizes :00 and */N schedules; judge freshness by the newest run's age, not by green runs.
+# Both public origins are probed: the judged domain and the Vercel alias it points at.
 on:
   schedule:
     - cron: "7,37 * * * *"
@@ -10,10 +11,14 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ["https://lullabuy.tech", "https://secondhand-safe-web.vercel.app"]
     steps:
-      - name: Real recall check, stats and health answer from production
+      - name: Real recall check, stats, health, Atlas deals and MCP answer from production
         env:
-          BASE: https://secondhand-safe-web.vercel.app
+          BASE: ${{ matrix.base }}
         run: |
           python3 - <<'PY'
           import json, os, urllib.request
@@ -28,8 +33,17 @@ jobs:
           s = get("/api/stats")
           assert s["recallIndex"]["recalls"] > 1000 and s["classifier"]["macroF1"] > s["classifier"]["zeroShotMacroF1"], s
           h = get("/api/health")
-          assert h["ok"] is True, h
+          assert h["ok"] is True and all(h["integrations"].values()), h
+          d = get("/api/deals")
+          assert isinstance(d["recent"], list), d
+          req = urllib.request.Request(base + "/api/mcp",
+              data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(),
+              headers={"content-type": "application/json", "accept": "application/json, text/event-stream"})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              tools = [t["name"] for t in json.loads(r.read())["result"]["tools"]]
+          assert "recall_check" in tools, tools
           with urllib.request.urlopen(base + "/", timeout=30) as r:
-              assert b"SecondHand Safe" in r.read()
-          print("probe ok", h["integrations"])
+              body = r.read()
+          assert b"Lullabuy" in body, "homepage does not carry the product name"
+          print("probe ok", base, h["integrations"], "deals", len(d["recent"]), "tools", tools)
           PY
