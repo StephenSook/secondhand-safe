@@ -4,9 +4,10 @@ import { parseUsPhone, sealPhone, openPhone, phoneHash, last4 } from "@/server/c
 import { buildNcco, callScript, MAX_REPLAYS } from "@/server/call/ncco";
 import { normalizePem, recallCallConfig, signTicket, verifyTicket, type RecallCallConfig } from "@/server/call/config";
 import { placeCall, vonageJwt } from "@/server/call/vonage";
-import { recallCall } from "@/server/call/trigger";
+import { recallCall, runPendingCalls, queueRecallCall, CALL_MAX_MS } from "@/server/call/trigger";
 import { callAfterReversal } from "@/server/call/pickup";
-import { saveOptIn, takeSlot } from "@/server/call/store";
+import { counter, dayKey, ensureIndexes, getOptIn, saveOptIn, takeSlot } from "@/server/call/store";
+import { checkCode, codeNcco, startCodeCall } from "@/server/call/verify";
 import { integrationStatus } from "@/server/env";
 import { boardDeal, pub, type DealRecord } from "@/server/deals/store";
 import { summarize } from "@/server/deals/trust";
@@ -17,10 +18,10 @@ import { fakeDb } from "./fixtures/fakeDb";
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
 const SECRET = "test-recall-secret-not-real";
 const cfg = (over: Partial<RecallCallConfig> = {}): RecallCallConfig => ({
-  applicationId: "00000000-0000-4000-8000-000000000000", privateKey, from: "+14045550100", secret: SECRET,
+  applicationId: "00000000-0000-4000-8000-000000000000", privateKey, from: "+14045552300", secret: SECRET,
   baseUrl: "https://lullabuy.example", dailyCap: 20, perNumberCap: 3, ...over,
 });
-const PHONE = "+14045550123";
+const PHONE = "+14045552368";
 
 /** A Vonage mock that answers 201 with a uuid and records every request body. */
 function vonageMock() {
@@ -42,20 +43,29 @@ const reversed = { kind: "reversed" as const, verdict: "RECALL_MATCH" as const, 
 
 describe("US phone validation (E.164)", () => {
   it("normalizes common US spellings", () => {
-    for (const s of ["(404) 555-0123", "404-555-0123", "404.555.0123", "4045550123", "14045550123", "+1 404 555 0123"]) expect(parseUsPhone(s)).toBe(PHONE);
+    for (const s of ["(404) 555-2368", "404-555-2368", "404.555.2368", "4045552368", "14045552368", "+1 404 555 2368"]) expect(parseUsPhone(s)).toBe(PHONE);
   });
   it("refuses everything that is not a callable US number", () => {
-    for (const s of ["+44 20 7946 0000", "+52 55 1234 5678", "123-456-7890", "404-155-0123", "911-555-0123", "404-911-0123", "900-555-0123", "976-555-0123",
-      "404555012", "404555012345", "404-555-01a3", "", "   ", "x".repeat(50)]) expect(parseUsPhone(s)).toBeNull();
-    expect(parseUsPhone(4045550123 as unknown)).toBeNull();
+    for (const s of ["+44 20 7946 0000", "+52 55 1234 5678", "123-456-7890", "404-155-0123", "911-555-2368", "404-911-0123", "900-555-2368", "976-555-2368",
+      "404555012", "404555236845", "404-555-01a3", "", "   ", "x".repeat(50)]) expect(parseUsPhone(s)).toBeNull();
+    expect(parseUsPhone(4045552368 as unknown)).toBeNull();
+  });
+  it("region is US exactly: Canada, the Caribbean and the territories are refused", () => {
+    for (const s of ["416-555-2368", "+1 604 555 2368", "876-555-2368", "242-555-2368", "787-555-2368", "671-555-2368", "684-733-1234"]) expect(parseUsPhone(s)).toBeNull();
+    expect(parseUsPhone("212-555-2368")).toBe("+12125552368");
+  });
+  it("refuses premium and service numbers in the area code and the exchange, N11, toll-free and 555-01XX fiction", () => {
+    for (const s of ["900-555-2368", "976-555-2368", "404-900-2368", "404-976-2368", "404-411-2368", "404-911-2368", "411-555-2368", "311-555-2368",
+      "800-555-2368", "888-555-2368", "404-555-0100", "404-555-0123", "404-555-0199"]) expect(parseUsPhone(s)).toBeNull();
+    expect(parseUsPhone("404-555-0200")).toBe("+14045550200");
   });
   it("seals the number (only the right secret opens it) and hashes it without the digits", () => {
     const s = sealPhone(SECRET, PHONE);
-    expect(s).not.toContain("4045550123");
+    expect(s).not.toContain("4045552368");
     expect(openPhone(SECRET, s)).toBe(PHONE);
     expect(openPhone("another-secret", s)).toBeNull();
     expect(phoneHash(SECRET, PHONE)).toBe(phoneHash(SECRET, PHONE));
-    expect(phoneHash(SECRET, PHONE)).not.toContain("0123");
+    expect(phoneHash(SECRET, PHONE)).not.toContain("2368");
   });
 });
 
@@ -93,9 +103,9 @@ describe("Vonage request", () => {
   });
   it("posts an inline NCCO from the owned number, digits only", async () => {
     const v = vonageMock();
-    const r = await placeCall({ applicationId: "app-1", privateKey, to: PHONE, from: "+14045550100", ncco: [{ action: "talk", text: "x" }], eventUrl: "https://x/event" }, v.f);
+    const r = await placeCall({ applicationId: "app-1", privateKey, to: PHONE, from: "+14045552300", ncco: [{ action: "talk", text: "x" }], eventUrl: "https://x/event" }, v.f);
     expect(r).toEqual({ ok: true, uuid: "call-1" });
-    expect(v.bodies[0]).toMatchObject({ to: [{ type: "phone", number: "14045550123" }], from: { type: "phone", number: "14045550100" }, ncco: [{ action: "talk", text: "x" }], event_url: ["https://x/event"] });
+    expect(v.bodies[0]).toMatchObject({ to: [{ type: "phone", number: "14045552368" }], from: { type: "phone", number: "14045552300" }, ncco: [{ action: "talk", text: "x" }], event_url: ["https://x/event"] });
   });
   it("gives up on a Vonage that hangs, and reports an HTTP error as a failure", async () => {
     const hang = (() => new Promise<Response>(() => {})) as typeof fetch;
@@ -124,7 +134,7 @@ describe("recall call gates", () => {
 
   it("the daily cap is atomic under concurrency and fails closed", async () => {
     const db = fakeDb();
-    const nums = ["+14045550101", "+14045550102", "+14045550103", "+14045550104", "+14045550105"];
+    const nums = ["+14045552301", "+14045552302", "+14045552303", "+14045552304", "+14045552305"];
     for (const [i, n] of nums.entries()) await seed(db, `shs-d${i}`, n);
     const v = vonageMock();
     const out = await Promise.all(nums.map((_, i) => recallCall(`shs-d${i}`, reversed, deps(db, v.f, { dailyCap: 2 }))));
@@ -135,7 +145,7 @@ describe("recall call gates", () => {
     const db2 = fakeDb(); await seed(db2, "shs-z");
     expect((await recallCall("shs-z", reversed, deps(db2, v.f, { dailyCap: 0 }))).state).toBe("capped-daily");
     const db3 = fakeDb({ failing: ["recall_call_counters"] }); await seed(db3, "shs-y");
-    expect((await recallCall("shs-y", reversed, deps(db3, v.f))).state).toBe("capped-daily");
+    expect((await recallCall("shs-y", reversed, deps(db3, v.f))).state).toBe("capped-number") // the first cap it checks is down: no call;
     expect(await takeSlot(db3.db, "day:x", 5)).toBe(false);
     expect(v.calls()).toBe(2);
   });
@@ -163,7 +173,7 @@ describe("recall call gates", () => {
   });
 
   it("uses the ElevenLabs MP3 when TTS answers, and Vonage talk when it fails", async () => {
-    const db = fakeDb(); await seed(db, "shs-s"); await seed(db, "shs-t", "+14045550199");
+    const db = fakeDb(); await seed(db, "shs-s"); await seed(db, "shs-t", "+14045552399");
     const bodies: Record<string, unknown>[] = [];
     const f = (async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).includes("elevenlabs")) return new Response(new Uint8Array(4000), { status: 200 });
@@ -207,8 +217,8 @@ describe("the phone number never reaches a public surface", () => {
       JSON.stringify(summarize([deal as never])),
     ];
     for (const s of surfaces) {
-      expect(s).not.toMatch(/4045550123|404.?555.?0123/);
-      expect(s).not.toContain("0123");
+      expect(s).not.toMatch(/4045552368|404.?555.?2368/);
+      expect(s).not.toContain("2368");
       expect(s).not.toContain(phoneHash(SECRET, PHONE));
     }
     // and nothing about the number was written onto the deal document itself
@@ -234,7 +244,7 @@ describe("after a reversal at pickup", () => {
 
 describe("config and health (wired-or-cut)", () => {
   afterEach(() => vi.unstubAllEnvs());
-  const full = { RECALL_CALL_VONAGE_APPLICATION_ID: "a", RECALL_CALL_VONAGE_PRIVATE_KEY: privateKey.replace(/\n/g, "\\n"), RECALL_CALL_FROM_NUMBER: "404-555-0100",
+  const full = { RECALL_CALL_VONAGE_APPLICATION_ID: "a", RECALL_CALL_VONAGE_PRIVATE_KEY: privateKey.replace(/\n/g, "\\n"), RECALL_CALL_FROM_NUMBER: "404-555-2300",
     RECALL_CALL_SECRET: "s", PUBLIC_BASE_URL: "https://lullabuy.example/", MONGODB_URI: "mongodb://x" };
   it("recallCall is live only when every variable is present", () => {
     expect(integrationStatus(full).recallCall).toBe(true);
@@ -244,7 +254,7 @@ describe("config and health (wired-or-cut)", () => {
   it("parses the key, number, base URL and cap", () => {
     const c = recallCallConfig(full)!;
     expect(c.privateKey).toBe(privateKey.trim()); // the escaped \n form is turned back into real line breaks
-    expect(c.from).toBe("+14045550100");
+    expect(c.from).toBe("+14045552300");
     expect(c.baseUrl).toBe("https://lullabuy.example");
     expect(c.dailyCap).toBe(20);
     expect(recallCallConfig({ ...full, RECALL_CALL_DAILY_CAP: "3" })!.dailyCap).toBe(3);
@@ -259,5 +269,128 @@ describe("config and health (wired-or-cut)", () => {
     expect(verifyTicket(SECRET, t, "audio", 2000)).toBeNull();
     expect(verifyTicket("other", t, "audio", 500)).toBeNull();
     expect(verifyTicket(SECRET, `${t}x`, "audio", 500)).toBeNull();
+  });
+});
+
+describe("proof of phone control before an opt-in is active", () => {
+  const codeFrom = (body: Record<string, unknown>) => ((body.ncco as { text: string }[])[0].text.match(/code is ([\d, ]+)\./)?.[1] ?? "").replace(/\D/g, "");
+
+  it("calls the number with a 4-digit code; only that code, on that deal, turns the opt-in on", async () => {
+    const db = fakeDb();
+    const v = vonageMock();
+    expect((await startCodeCall(db.db, cfg(), "shs-v", PHONE, { fetchImpl: v.f })).state).toBe("calling");
+    expect(codeNcco("4721")[0].text).toBe("Your Lullabuy code is 4, 7, 2, 1. Again, your code is 4, 7, 2, 1. Goodbye.");
+    const code = codeFrom(v.bodies[0]);
+    expect(code).toMatch(/^\d{4}$/);
+    expect(v.bodies[0].to).toEqual([{ type: "phone", number: "14045552368" }]);
+    // the code is stored hashed, and nothing is active yet
+    expect(JSON.stringify(db.docs("recall_verifications"))).not.toContain(`"${code}"`);
+    expect(await getOptIn(db.db, "shs-v")).toBeNull();
+    expect((await recallCall("shs-v", reversed, { db: db.db, cfg: cfg(), fetchImpl: v.f, elevenKey: null })).state).toBe("no-optin");
+    // the right code on ANOTHER deal does nothing
+    expect((await checkCode(db.db, cfg(), "shs-other", code)).state).toBe("expired");
+    const wrong = code === "0000" ? "1111" : "0000";
+    expect((await checkCode(db.db, cfg(), "shs-v", wrong)).state).toBe("wrong");
+    expect(await checkCode(db.db, cfg(), "shs-v", code)).toEqual({ state: "verified", last4: "2368" });
+    expect((await getOptIn(db.db, "shs-v"))?.last4).toBe("2368");
+  });
+
+  it("3 attempts, then the code is dead; codes expire after 10 minutes", async () => {
+    const db = fakeDb();
+    const v = vonageMock();
+    await startCodeCall(db.db, cfg(), "shs-a3", PHONE, { fetchImpl: v.f, code: "1234" });
+    for (let i = 0; i < 3; i++) expect((await checkCode(db.db, cfg(), "shs-a3", "9999")).state).toBe("wrong");
+    expect((await checkCode(db.db, cfg(), "shs-a3", "1234")).state).toBe("expired");
+    const t0 = Date.now();
+    await startCodeCall(db.db, cfg(), "shs-ttl", "+14045552369", { fetchImpl: v.f, code: "1234", now: t0 });
+    expect((await checkCode(db.db, cfg(), "shs-ttl", "1234", t0 + 11 * 60_000)).state).toBe("expired");
+  });
+
+  it("one code call in flight per deal, and at most 2 code calls per number per day", async () => {
+    const db = fakeDb();
+    const v = vonageMock();
+    const both = await Promise.all([startCodeCall(db.db, cfg(), "shs-f", PHONE, { fetchImpl: v.f }), startCodeCall(db.db, cfg(), "shs-f", PHONE, { fetchImpl: v.f })]);
+    expect(both.map((r) => r.state).sort()).toEqual(["calling", "in-flight"]);
+    expect((await startCodeCall(db.db, cfg(), "shs-g", PHONE, { fetchImpl: v.f })).state).toBe("calling");
+    expect((await startCodeCall(db.db, cfg(), "shs-h", PHONE, { fetchImpl: v.f })).state).toBe("capped-verify");
+    expect(v.calls()).toBe(2);
+    const day = dayKey();
+    // the refused third attempt spent nothing; each code call spent the number's and the day's budget
+    expect(await counter(db.db, `vnum:${phoneHash(SECRET, PHONE)}:${day}`)).toBe(2);
+    expect(await counter(db.db, `num:${phoneHash(SECRET, PHONE)}:${day}`)).toBe(2);
+    expect(await counter(db.db, `day:${day}`)).toBe(2);
+  });
+});
+
+describe("cap order: a capped number never spends the shared daily budget", () => {
+  it("per-number refusals leave the global count unchanged", async () => {
+    const db = fakeDb();
+    for (let i = 0; i < 8; i++) await seed(db, `shs-c${i}`);
+    const v = vonageMock();
+    for (let i = 0; i < 8; i++) await recallCall(`shs-c${i}`, reversed, { db: db.db, cfg: cfg({ dailyCap: 5 }), fetchImpl: v.f, elevenKey: null });
+    expect(v.calls()).toBe(3);
+    expect(await counter(db.db, `day:${dayKey()}`)).toBe(3);
+    // another number still gets its call: the 5 refused attempts did not use up the day
+    await seed(db, "shs-other-number", "+14045552399");
+    expect((await recallCall("shs-other-number", reversed, { db: db.db, cfg: cfg({ dailyCap: 5 }), fetchImpl: v.f, elevenKey: null })).state).toBe("placed");
+  });
+  it("a daily refusal gives the number's slot back", async () => {
+    const db = fakeDb(); await seed(db, "shs-dd");
+    const v = vonageMock();
+    expect((await recallCall("shs-dd", reversed, { db: db.db, cfg: cfg({ dailyCap: 0 }), fetchImpl: v.f, elevenKey: null })).state).toBe("capped-daily");
+    expect(await counter(db.db, `num:${phoneHash(SECRET, PHONE)}:${dayKey()}`)).toBe(0);
+  });
+});
+
+describe("recall watch: queued calls run after the loop, in parallel, within the time left", () => {
+  const slow = (ms: number) => (async () => { await new Promise((ok) => setTimeout(ok, ms)); return new Response(JSON.stringify({ uuid: "u" }), { status: 201 }); }) as unknown as typeof fetch;
+
+  it("4 slow providers finish together, well inside the budget", async () => {
+    const db = fakeDb();
+    for (let i = 0; i < 4; i++) { await seed(db, `shs-w${i}`, `+1404555237${i}`); expect(await queueRecallCall(`shs-w${i}`, "26-100", { db: db.db, cfg: cfg() })).toBe(true); }
+    expect(await queueRecallCall("shs-w0", "26-100", { db: db.db, cfg: cfg() })).toBe(false); // idempotent
+    const t0 = Date.now();
+    const r = await runPendingCalls(t0 + CALL_MAX_MS + 10_000, { db: db.db, cfg: cfg(), fetchImpl: slow(400), elevenKey: null });
+    expect(Date.now() - t0).toBeLessThan(1500); // parallel: about one call's time, not four
+    expect(r).toMatchObject({ started: 4, timedOut: false });
+    expect(r.outcomes).toEqual(["placed", "placed", "placed", "placed"]);
+    expect(db.docs("recall_calls").every((c) => c.status === "placed")).toBe(true);
+  });
+
+  it("with too little time left, nothing starts; the leftovers run on the next run, exactly once", async () => {
+    const db = fakeDb(); await seed(db, "shs-late");
+    await queueRecallCall("shs-late", "26-100", { db: db.db, cfg: cfg() });
+    const v = vonageMock();
+    const first = await runPendingCalls(Date.now() + 1000, { db: db.db, cfg: cfg(), fetchImpl: v.f, elevenKey: null });
+    expect(first).toMatchObject({ started: 0, timedOut: true });
+    expect(db.docs("recall_calls")[0].status).toBe("pending");
+    await runPendingCalls(Date.now() + 60_000, { db: db.db, cfg: cfg(), fetchImpl: v.f, elevenKey: null });
+    await runPendingCalls(Date.now() + 60_000, { db: db.db, cfg: cfg(), fetchImpl: v.f, elevenKey: null });
+    expect(v.calls()).toBe(1);
+  });
+
+  it("an unverified deal is never queued", async () => {
+    const db = fakeDb();
+    expect(await queueRecallCall("shs-none", "26-100", { db: db.db, cfg: cfg() })).toBe(false);
+    expect(db.docs("recall_calls")).toHaveLength(0);
+  });
+});
+
+describe("TTL indexes before any phone write", () => {
+  it("creates every TTL index before the first write, and refuses the write (fail closed) when it cannot", async () => {
+    let fail = true;
+    const db = fakeDb({ failIndex: () => fail });
+    const opt = { _id: "shs-ttl-1", sealed: sealPhone(SECRET, PHONE), hash: phoneHash(SECRET, PHONE), last4: "2368" };
+    expect(await saveOptIn(db.db, opt)).toBe(false);
+    expect(db.docs("recall_optins")).toHaveLength(0);
+    const v = vonageMock();
+    expect((await startCodeCall(db.db, cfg(), "shs-ttl-1", PHONE, { fetchImpl: v.f })).state).toBe("no-db");
+    expect(v.calls()).toBe(0);
+    expect(db.docs("recall_verifications")).toHaveLength(0);
+    // not marked ready after a failure: the next write retries the indexes
+    fail = false;
+    expect(await saveOptIn(db.db, opt)).toBe(true);
+    expect([...new Set(db.indexes)].sort()).toEqual(["recall_call_counters", "recall_calls", "recall_optins", "recall_verifications"]);
+    expect(await ensureIndexes(db.db)).toBe(true);
   });
 });

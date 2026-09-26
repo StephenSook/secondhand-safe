@@ -4,13 +4,14 @@ import { speakText } from "@/server/voice/elevenlabs";
 import { recallCallConfig, signTicket, type RecallCallConfig } from "./config";
 import { buildNcco, callScript, reasonKey, type CallReason } from "./ncco";
 import { openPhone } from "./phone";
-import { claimCall, dayKey, ensureIndexes, getOptIn, takeSlot, updateCall } from "./store";
+import { claimCall, dayKey, enqueueCall, ensureIndexes, getOptIn, pendingCalls, reserveSlots, updateCall } from "./store";
 import { placeCall } from "./vonage";
 
 /**
- * The recall call (PLAN 6.12). Runs in the background (waitUntil) AFTER the settlement is recorded, so it can never
- * delay or change what Visa did. Order of the gates, each failing closed:
- *   opted in on THIS deal -> claim (deal, reason) once -> daily cap -> per-number cap -> place the call.
+ * The recall call (PLAN 6.12). Runs in the background AFTER the settlement is recorded, so it can never delay or
+ * change what Visa did. Order of the gates, each failing closed:
+ *   TTL indexes -> a VERIFIED opt-in on THIS deal -> claim (deal, reason) once -> per-number cap, then daily cap
+ *   (reserved together: a refused number gives back nothing it took) -> place the call.
  * A slot is spent even when the call later fails: a failure is never retried into a second call.
  */
 export type CallOutcome =
@@ -39,10 +40,9 @@ export async function recallCall(dealId: string, reason: CallReason, deps: CallD
     const cfg = deps.cfg !== undefined ? deps.cfg : recallCallConfig();
     if (!cfg) return { state: "not-configured" };
     const db = deps.db !== undefined ? deps.db : await getDb().catch(() => null);
-    if (!db) return { state: "no-db" };
+    if (!db || !(await ensureIndexes(db))) return { state: "no-db" };
     const now = deps.now ?? Date.now();
     const fetchImpl = deps.fetchImpl ?? fetch;
-    void ensureIndexes(db).catch(() => {});
 
     const opt = await getOptIn(db, dealId);
     if (!opt) return { state: "no-optin" };
@@ -50,15 +50,13 @@ export async function recallCall(dealId: string, reason: CallReason, deps: CallD
     if (!to) return { state: "bad-optin" };
     const key = reasonKey(reason);
     const id = `${dealId}:${key}`;
-    if (!(await claimCall(db, { dealId, reason: key, last4: opt.last4, hash: opt.hash }, now))) return { state: "already" };
+    if (!(await claimCall(db, { dealId, reason: key, recallNumber: reason.recallNumber, last4: opt.last4, hash: opt.hash }, now))) return { state: "already" };
     const day = dayKey(now);
-    if (!(await takeSlot(db, `day:${day}`, cfg.dailyCap, now))) {
-      await updateCall(db, id, { status: "capped", note: "daily call cap reached" });
-      return { state: "capped-daily" };
-    }
-    if (!(await takeSlot(db, `num:${opt.hash}:${day}`, cfg.perNumberCap, now))) {
-      await updateCall(db, id, { status: "capped", note: "this number already got its calls today" });
-      return { state: "capped-number" };
+    const r0 = await reserveSlots(db, [{ id: `num:${opt.hash}:${day}`, cap: cfg.perNumberCap }, { id: `day:${day}`, cap: cfg.dailyCap }], now);
+    if (!r0.ok) {
+      const numberCapped = r0.refused === 0;
+      await updateCall(db, id, { status: "capped", note: numberCapped ? "this number already got its calls today" : "daily call cap reached" });
+      return { state: numberCapped ? "capped-number" : "capped-daily" };
     }
 
     const deal = await db.collection<{ _id: string; listing: string; amountUsd: number }>("deals")
@@ -88,4 +86,40 @@ export async function recallCall(dealId: string, reason: CallReason, deps: CallD
     console.warn("[recall-call] failed:", (e as Error).message);
     return { state: "failed", error: (e as Error).message };
   }
+}
+
+/** The longest one call can take: 8 s of ElevenLabs plus 10 s of Vonage, plus the database writes. */
+export const CALL_MAX_MS = 22_000;
+
+/** The recall watch queues a post-sale call for a VERIFIED opt-in (idempotent); true when newly queued. */
+export async function queueRecallCall(dealId: string, recallNumber: string, deps: Pick<CallDeps, "db" | "cfg"> = {}): Promise<boolean> {
+  const cfg = deps.cfg !== undefined ? deps.cfg : recallCallConfig();
+  const db = deps.db !== undefined ? deps.db : await getDb().catch(() => null);
+  if (!cfg || !db) return false;
+  const opt = await getOptIn(db, dealId);
+  if (!opt) return false;
+  return enqueueCall(db, { dealId, reason: reasonKey({ kind: "postsale", recallNumber }), recallNumber, last4: opt.last4, hash: opt.hash });
+}
+
+/**
+ * Runs the recall watch's QUEUED calls (this run's and any left over from earlier runs) in parallel, and stops
+ * waiting at `deadlineMs`. A call that has not started by then stays "pending" and is picked up by the next run;
+ * one that started is never started again (its claim moved to "claimed").
+ */
+export async function runPendingCalls(deadlineMs: number, deps: CallDeps = {}): Promise<{ started: number; outcomes: string[]; timedOut: boolean }> {
+  const db = deps.db !== undefined ? deps.db : await getDb().catch(() => null);
+  if (!db) return { started: 0, outcomes: [], timedOut: false };
+  const queued = (await pendingCalls(db)).filter((c) => c.reason.startsWith("postsale:") && c.recallNumber);
+  const left = deadlineMs - Date.now();
+  // start nothing that could still be running when the function is stopped: it would be claimed and never retried
+  if (!queued.length || left < CALL_MAX_MS) return { started: 0, outcomes: [], timedOut: queued.length > 0 };
+  const outcomes: string[] = [];
+  const all = Promise.allSettled(queued.map(async (c) => {
+    const o = await recallCall(c.dealId, { kind: "postsale", recallNumber: c.recallNumber! }, { ...deps, db });
+    outcomes.push(o.state);
+  }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = await Promise.race([all.then(() => false), new Promise<boolean>((ok) => { timer = setTimeout(() => ok(true), left); })]);
+  clearTimeout(timer);
+  return { started: queued.length, outcomes: [...outcomes], timedOut };
 }

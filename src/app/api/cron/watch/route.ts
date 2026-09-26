@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { flagPostSaleRecall, watchedSales } from "@/server/deals/store";
 import { recheckSales } from "@/server/watch/recheck";
 import { notify } from "@/server/watch/push";
-import { recallCall } from "@/server/call/trigger";
+import { queueRecallCall, runPendingCalls } from "@/server/call/trigger";
 
 export const maxDuration = 60;
 const NO_STORE = { "cache-control": "no-store" };
@@ -15,6 +15,7 @@ const bearerMatches = (given: string | null, expected: string) => !!given && tim
  * are notified. Idempotent: a sale is flagged once per recall.
  */
 export async function GET(request: Request) {
+  const startedAt = Date.now();
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return Response.json({ error: "CRON_SECRET is not configured." }, { status: 503, headers: NO_STORE });
   const auth = request.headers.get("authorization") ?? "";
@@ -30,9 +31,11 @@ export async function GET(request: Request) {
       .catch(() => ({ sent: 0, failed: 1, subs: 1 }));
     const delivered = push.subs === 0 || push.sent > 0;
     const newly = delivered ? await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url }, push.sent) : false;
-    // the recall call (opt-in): once per sale per recall, capped; its result never changes the flag above
-    const call = newly ? (await recallCall(h.dealId, { kind: "postsale", recallNumber: h.recallNumber })).state : "not-flagged";
+    // the recall call (opt-in): only QUEUED here (idempotent); placed after the loop, so telephony never slows the watch
+    const call = newly ? ((await queueRecallCall(h.dealId, h.recallNumber)) ? "queued" : "not-queued") : "not-flagged";
     out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered, call });
   }
-  return Response.json({ checked: sales.length, hits: out }, { headers: NO_STORE });
+  // queued calls (this run's and earlier leftovers) in parallel, within what is left of this function's time
+  const calls = await runPendingCalls(startedAt + maxDuration * 1000 - 5000);
+  return Response.json({ checked: sales.length, hits: out, calls }, { headers: NO_STORE });
 }

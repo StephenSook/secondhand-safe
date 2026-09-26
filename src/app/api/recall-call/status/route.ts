@@ -3,7 +3,7 @@ import { verifyDealToken } from "@/server/deals/token";
 import { visaCreds } from "@/server/visa/creds";
 import { underLimit } from "@/server/visa/microform";
 import { recallCallConfig } from "@/server/call/config";
-import { callsForDeal, getOptIn } from "@/server/call/store";
+import { callsForDeal, getOptIn, getVerification } from "@/server/call/store";
 
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -21,8 +21,9 @@ export async function POST(request: Request) {
   const calls = db ? await callsForDeal(db, deal.dealId) : null;
   if (!db || !calls) return Response.json({ error: "MongoDB Atlas did not answer." }, { status: 503, headers: NO_STORE });
   const opt = await getOptIn(db, deal.dealId);
+  const pending = opt ? null : await getVerification(db, deal.dealId);
   return Response.json({
-    optedIn: !!opt, last4: opt?.last4 ?? null,
+    optedIn: !!opt, last4: opt?.last4 ?? null, verifying: pending ? pending.last4 : null,
     calls: calls.map((c) => ({ reason: c.reason, status: c.status, last4: c.last4, at: c.placedAt ?? c.updatedAt, mode: c.mode ?? null })),
   }, { headers: NO_STORE });
 }

@@ -10,7 +10,7 @@ const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048, private
 const VISA = "visa-secret-for-tests";
 beforeAll(() => {
   Object.assign(process.env, { VISA_MERCHANT_ID: "m", VISA_KEY_ID: "k", VISA_SECRET_KEY: VISA, RECALL_CALL_VONAGE_APPLICATION_ID: "app", RECALL_CALL_VONAGE_PRIVATE_KEY: privateKey,
-    RECALL_CALL_FROM_NUMBER: "+14045550100", RECALL_CALL_SECRET: "call-secret-for-tests", PUBLIC_BASE_URL: "https://lullabuy.example", MONGODB_URI: "mongodb://fake" });
+    RECALL_CALL_FROM_NUMBER: "+14045552300", RECALL_CALL_SECRET: "call-secret-for-tests", PUBLIC_BASE_URL: "https://lullabuy.example", MONGODB_URI: "mongodb://fake" });
 });
 const post = (url: string, body: unknown, ip: string) => new Request(url, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": ip }, body: JSON.stringify(body) });
 
@@ -19,23 +19,40 @@ describe("opt-in and status routes", () => {
     const { POST: optin } = await import("@/app/api/recall-call/optin/route");
     const { POST: status } = await import("@/app/api/recall-call/status/route");
     const token = issueDealToken(VISA, { dealId: "shs-route", authId: "a", amountUsd: 42 });
-    expect((await optin(post("http://x", { token: "forged.token", phone: "4045550123" }, "1.1.1.1"))).status).toBe(403);
+    expect((await optin(post("http://x", { token: "forged.token", phone: "4045552368" }, "1.1.1.1"))).status).toBe(403);
     expect((await optin(post("http://x", { token, phone: "+44 20 7946 0000" }, "1.1.1.2"))).status).toBe(400);
-    const ok = await optin(post("http://x", { token, phone: "(404) 555-0123" }, "1.1.1.3"));
-    expect(ok.status).toBe(200);
-    const j = await ok.json();
-    expect(j).toEqual({ optedIn: true, last4: "0123" });
-    const stored = JSON.stringify(fake.docs("recall_optins"));
-    expect(stored).not.toContain("4045550123");
+    const { POST: verify } = await import("@/app/api/recall-call/verify/route");
+    const spoken: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_u: unknown, init?: RequestInit) => {
+      spoken.push((JSON.parse(String(init?.body)).ncco as { text: string }[])[0].text);
+      return new Response(JSON.stringify({ uuid: "code-call" }), { status: 201 });
+    }));
+    try {
+      const ok = await optin(post("http://x", { token, phone: "(404) 555-2368" }, "1.1.1.3"));
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ verifying: true, last4: "2368" });
+      expect(fake.docs("recall_optins")).toHaveLength(0); // not active until the code comes back
+      expect((await optin(post("http://x", { token, phone: "(404) 555-2368" }, "1.1.1.5"))).status).toBe(409); // one in flight
+      const pending = await (await status(post("http://x", { token }, "1.1.1.4"))).json();
+      expect(pending).toEqual({ optedIn: false, last4: null, verifying: "2368", calls: [] });
+      const code = (spoken[0].match(/code is ([\d, ]+)\./)?.[1] ?? "").replace(/\D/g, "");
+      expect((await verify(post("http://x", { token, code: code === "0000" ? "1111" : "0000" }, "1.1.1.6"))).status).toBe(400);
+      const done = await verify(post("http://x", { token, code }, "1.1.1.6"));
+      expect(await done.json()).toEqual({ optedIn: true, last4: "2368" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const stored = JSON.stringify([fake.docs("recall_optins"), fake.docs("recall_verifications")]);
+    expect(stored).not.toContain("4045552368");
     expect(fake.docs("recall_optins")[0]._id).toBe("shs-route");
     const s = await (await status(post("http://x", { token }, "1.1.1.4"))).json();
-    expect(s).toEqual({ optedIn: true, last4: "0123", calls: [] });
-    expect(JSON.stringify(s)).not.toContain("4045550123");
+    expect(s).toEqual({ optedIn: true, last4: "2368", verifying: null, calls: [] });
+    expect(JSON.stringify(s)).not.toContain("4045552368");
   });
   it("rate-limits the opt-in endpoint per IP", async () => {
     const { POST: optin } = await import("@/app/api/recall-call/optin/route");
     const codes: number[] = [];
-    for (let i = 0; i < 8; i++) codes.push((await optin(post("http://x", { token: "bad", phone: "4045550123" }, "9.9.9.9"))).status);
+    for (let i = 0; i < 8; i++) codes.push((await optin(post("http://x", { token: "bad", phone: "4045552368" }, "9.9.9.9"))).status);
     expect(codes.slice(0, 6).every((c) => c === 403)).toBe(true);
     expect(codes.slice(6)).toEqual([429, 429]);
   });

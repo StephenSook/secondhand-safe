@@ -1,3 +1,4 @@
+import { parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 
 /**
@@ -6,21 +7,27 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes }
  * (so the per-number cap can count it), both keyed from RECALL_CALL_SECRET, and expires with a TTL.
  */
 const PREMIUM = new Set(["900", "976"]);
+const CALLABLE = new Set(["FIXED_LINE", "MOBILE", "FIXED_LINE_OR_MOBILE"]);
 
+/** Region US exactly (libphonenumber full metadata): Canada, the Caribbean and the US territories are refused, and
+ *  so are premium-rate, shared-cost, toll-free and service numbers, 900/976 and N11 codes in the area code OR the
+ *  exchange, and the 555-01XX range reserved for fiction. */
 export function parseUsPhone(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.length > 40) return null;
   const trimmed = raw.trim();
   if (!/^\+?[\d\s().-]+$/.test(trimmed)) return null;
-  let d = trimmed.replace(/\D/g, "");
-  if (trimmed.startsWith("+") && !d.startsWith("1")) return null; // another country code
-  if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
-  if (d.length !== 10) return null;
-  // NANP: area code and exchange both start 2-9; no N11 service codes; no premium-rate area codes
+  const p = parsePhoneNumberFromString(trimmed, "US");
+  if (!p || !p.isValid() || p.country !== "US") return null;
+  const type = p.getType();
+  if (!type || !CALLABLE.has(type)) return null;
+  const d = p.nationalNumber;
   if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(d)) return null;
   const area = d.slice(0, 3), exch = d.slice(3, 6);
-  if (area[1] === "1" && area[2] === "1") return null;
-  if (exch[1] === "1" && exch[2] === "1") return null;
-  if (PREMIUM.has(area)) return null;
+  for (const code of [area, exch]) {
+    if (PREMIUM.has(code)) return null;
+    if (code[1] === "1" && code[2] === "1") return null; // N11 (211, 311, 411, 511, 611, 711, 811, 911)
+  }
+  if (exch === "555" && d.slice(6, 8) === "01") return null;
   return `+1${d}`;
 }
 

@@ -14,6 +14,7 @@ function matches(d: Doc, f: Record<string, unknown>): boolean {
     if (v && typeof v === "object" && !Array.isArray(v)) {
       const op = v as Record<string, unknown>;
       if ("$lt" in op) return typeof got === "number" && got < (op.$lt as number);
+      if ("$gt" in op) return typeof got === "number" && got > (op.$gt as number);
       if ("$in" in op) return (op.$in as unknown[]).includes(got);
       if ("$ne" in op) return got !== op.$ne;
     }
@@ -28,15 +29,23 @@ function apply(d: Doc, u: Record<string, Record<string, unknown>>, inserting: bo
   for (const [k, v] of Object.entries(u.$push ?? {})) d[k] = [...((d[k] as unknown[]) ?? []), v];
 }
 
-export function fakeDb(opts: { failing?: string[] } = {}) {
+export function fakeDb(opts: { failing?: string[]; failIndex?: () => boolean } = {}) {
   const data = new Map<string, Map<string, Doc>>();
+  const indexes: string[] = [];
   const col = (name: string) => { if (!data.has(name)) data.set(name, new Map()); return data.get(name)!; };
   const guard = (name: string) => { if (opts.failing?.includes(name)) throw new Error(`${name} is down`); };
   const db = {
     collection(name: string) {
       const c = col(name);
       return {
-        async createIndex() { return "ok"; },
+        async createIndex() { await tick(); if (opts.failIndex?.()) throw new Error("index build refused"); indexes.push(name); return "ok"; },
+        async deleteOne(f: Record<string, unknown>) { await tick(); guard(name); const d = [...c.values()].find((x) => matches(x, f)); if (d) c.delete(d._id); return { deletedCount: d ? 1 : 0 }; },
+        async findOneAndUpdate(f: Record<string, unknown>, u: Record<string, Record<string, unknown>>) {
+          await tick(); guard(name);
+          const hit = [...c.values()].find((d) => matches(d, f));
+          if (!hit) return null;
+          apply(hit, u, false); return structuredClone(hit);
+        },
         async insertOne(d: Doc) {
           await tick(); guard(name);
           if (c.has(d._id)) throw Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
@@ -64,5 +73,5 @@ export function fakeDb(opts: { failing?: string[] } = {}) {
       };
     },
   };
-  return { db: db as unknown as Db, data, docs: (name: string) => [...col(name).values()] };
+  return { db: db as unknown as Db, data, indexes, docs: (name: string) => [...col(name).values()] };
 }
