@@ -19,7 +19,10 @@ const SEARCH_URL = "https://lullabuy.tech/api/voice-agent/search";
 // Same premade voice ("Sarah") and model as src/server/voice/elevenlabs.ts; eleven_flash_v2_5 is multilingual,
 // and /api/voice already speaks Spanish with it.
 const VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
-const TTS_MODEL = "eleven_flash_v2_5";
+// ElevenLabs requires an English-only model on an English agent ("English Agents must use turbo or flash v2",
+// HTTP 400 measured 2026-09-26); the Spanish preset switches to the multilingual flash model.
+const TTS_MODEL = "eleven_flash_v2";
+const TTS_MODEL_ES = "eleven_flash_v2_5";
 const ALLOWED_HOSTS = ["lullabuy.tech", "www.lullabuy.tech", "secondhand-safe-web.vercel.app"];
 // A conversation ends itself after this, so an abandoned tab (or a scripted client) cannot burn the plan's minutes.
 const MAX_CALL_SECONDS = 180;
@@ -125,7 +128,7 @@ const agentBody = (toolIds) => ({
     tts: { model_id: TTS_MODEL, voice_id: VOICE_ID },
     conversation: { max_duration_seconds: MAX_CALL_SECONDS },
     language_presets: {
-      es: { overrides: { agent: { language: "es", first_message: FIRST_MESSAGE_ES } } },
+      es: { overrides: { agent: { language: "es", first_message: FIRST_MESSAGE_ES }, tts: { model_id: TTS_MODEL_ES } } },
     },
   },
   platform_settings: {
