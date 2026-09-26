@@ -111,7 +111,21 @@ export function checkLabel(input: LabelInput): Verdict {
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
-    if (hit) return recallVerdict(pick(hit), "model", input.model, input.batch, input.date);
+    if (hit) {
+      // A short all-digit model number ("4340") is shared across brands, so it only counts as the recalled product
+      // when the label or listing names that recall's brand. Otherwise it waits for a person: never a reversal.
+      if (/^\d{4,6}$/.test(fold(input.model))) {
+        const branded = hit.filter((e) => e.recall.brands.some((b) => b.length >= 3 && text.includes(b.toLowerCase())));
+        if (!branded.length) {
+          const e = pick(hit);
+          const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";
+          return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "model", value: input.model, recallValue: e.value }, asOf: INDEX_AS_OF,
+            reason: `Model ${e.value} appears in ${e.recall.source} recall ${e.recall.recallNumber} (${brands}). A number this short is shared across brands: confirm the brand on the label.` };
+        }
+        return recallVerdict(pick(branded), "model", input.model, input.batch, input.date);
+      }
+      return recallVerdict(pick(hit), "model", input.model, input.batch, input.date);
+    }
   }
   const c = input.cls && input.cls.p >= CLASS_MIN_P ? input.cls.cls : undefined;
   if (c === "crib_bumper") {

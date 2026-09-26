@@ -98,3 +98,21 @@ describe("legal rules (PLAN D3)", () => {
     expect(checkLabel({ model: "QX-831", cls: { cls: "crib_bumper", p: 0.9 } }).kind).toBe("RECALL_MATCH");
   });
 });
+
+describe("short all-digit model numbers need the brand (real Delta drop-side crib recalls list model 4340)", () => {
+  it("4340 with no brand waits for a person, never reverses", () => {
+    const v = checkLabel({ model: "4340" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.reason).toMatch(/Delta/);
+    expect(v.reason).toMatch(/confirm the brand/);
+  });
+  it("4340 with the brand on the label reaches the recall's own rules (here: its production dates)", () => {
+    const v = checkLabel({ model: "4340", text: "Delta Enterprise crib" });
+    expect(v.reason).not.toMatch(/confirm the brand/);
+    expect(v.recall?.brands).toContain("Delta");
+    expect(v.reason).toMatch(/production dates/);
+  });
+  it("4340 on another brand's label still waits", () => {
+    expect(checkLabel({ model: "4340", text: "Graco pack n play" }).kind).toBe("NEEDS_CHECK");
+  });
+});

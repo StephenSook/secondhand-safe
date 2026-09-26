@@ -35,6 +35,16 @@ Two seeded random samples of 20 recalls each, read against the full CPSC descrip
 
 - Counts are written by the script to `recall_stats.json` and published in `docs/FACTS.json`; read them
   there, not here.
-- The Gemini pass is built but has not run: the API key's project has no prepaid credit (HTTP 402 on
-  every call, 2026-09-26). The script refuses to write an index that claims a Gemini pass when any call
-  failed.
+- The Gemini pass ran on 2026-09-26 with `gemini-3.5-flash` through Vertex AI (the AI Studio key's project
+  was still on a depleted prepay account). All 1,137 nursery recalls were read; one call timed out and the
+  script refused to write, and the rerun retried only that record from the cache. A value Gemini returns is
+  kept only if it appears verbatim in that recall's own text (`geminiValuesRejected` counts the ones that
+  did not).
+- Recalls with any identifier rose from 449 (regex only) to 822.
+- A spot check of the new values found two shapes that needed rules, both now in place:
+  1. Short all-digit model numbers ("4340", listed by Delta's drop-side crib recalls). They are shared
+     across brands, so the matcher returns NEEDS_CHECK naming the brand unless the label or listing text
+     names it (tests/match.test.ts).
+  2. Batch values that are production-date phrases ("production dates 01/06 thru 11/07"). They can never
+     equal a printed batch code, so a model hit on such a recall is NEEDS_CHECK (the hold waits for a
+     person). That is conservative, never a wrong reversal.

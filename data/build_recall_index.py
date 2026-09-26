@@ -5,12 +5,13 @@ Steps
   2. Keep nursery and children's products (keyword match on title, product names and description).
   3. Extract model numbers, batch codes and UPCs two ways:
        regex   deterministic patterns ("Model BHC001", "model numbers 123, 456", "UPC 0 12345 67890 1")
-       gemini  structured extraction with gemini-3.8-flash for the phrasings a regex misses
+       gemini  structured extraction with gemini-3.5-flash for the phrasings a regex misses
      A Gemini value is KEPT ONLY IF it appears verbatim (case and spacing folded) in the recall text, so the
      model can find numbers but can never invent one. Every value records how it was found.
   4. Write data/recalls.json (the index the app and Atlas load) and data/recall_stats.json.
 
   GEMINI_API_KEY=... ml/.venv/bin/python data/build_recall_index.py [--no-gemini]
+  VERTEX_PROJECT=curtail-505118 VERTEX_TOKEN=$(gcloud auth print-access-token) ml/.venv/bin/python data/build_recall_index.py
 """
 import concurrent.futures as cf
 import datetime
@@ -26,7 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "ml", "data", "cpsc_raw")
 OUT = os.path.join(ROOT, "data")
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh) SecondHandSafe-research (HackGT 13)", "Accept": "application/json"}
-MODEL = "gemini-3.8-flash"
+MODEL = "gemini-3.5-flash"  # 3.8-flash took >120 s per call on Vertex; 3.5-flash ~3 s, same answers on the probe
 
 NURSERY = re.compile(
     r"\b(crib|cribs|bassinet|bassinets|infant|infants|baby|babies|toddler|toddlers|nursery|sleeper|sleepers|"
@@ -113,7 +114,7 @@ def gemini_extract(rec, key):
               "written. batches: production batch codes, lot codes or date codes of recalled units, exactly as "
               "written. upcs: UPC codes as digits. brands: brand names. productType: one short noun phrase. "
               "If none, use empty lists. Never invent a value that is not in the text.\n\n" + text_of(rec))
-    body = {"contents": [{"parts": [{"text": prompt}]}],
+    body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0,
                                  "responseSchema": {"type": "OBJECT", "properties": {
                                      "models": {"type": "ARRAY", "items": {"type": "STRING"}},
@@ -122,9 +123,17 @@ def gemini_extract(rec, key):
                                      "brands": {"type": "ARRAY", "items": {"type": "STRING"}},
                                      "productType": {"type": "STRING"}},
                                      "required": ["models", "batches", "upcs", "brands", "productType"]}}}
+    # key is either an AI Studio API key, or "vertex:<project>:<access token>" to bill Vertex AI on a
+    # project whose billing account carries the credits (gcloud auth print-access-token)
+    if key.startswith("vertex:"):
+        _, project, token = key.split(":", 2)
+        url = f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{MODEL}:generateContent"
+        headers = {"Authorization": f"Bearer {token}"}
+    else:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+        headers = {"x-goog-api-key": key}
     for attempt in range(4):
-        r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
-                          headers={"x-goog-api-key": key}, json=body, timeout=120)
+        r = requests.post(url, headers=headers, json=body, timeout=120)
         if r.status_code == 429 or r.status_code >= 500:
             time.sleep(4 * (attempt + 1))
             continue
@@ -194,9 +203,10 @@ def build(use_gemini):
     recs = list({r["RecallNumber"]: r for r in recs}.values())
     nursery = [r for r in recs if is_nursery(r)]
     print(f"{len(recs)} recalls total, {len(nursery)} nursery/children")
-    key = os.environ.get("GEMINI_API_KEY") if use_gemini else None
+    vertex = os.environ.get("VERTEX_PROJECT") and os.environ.get("VERTEX_TOKEN")
+    key = (f"vertex:{os.environ['VERTEX_PROJECT']}:{os.environ['VERTEX_TOKEN']}" if vertex else os.environ.get("GEMINI_API_KEY")) if use_gemini else None
     if use_gemini and not key:
-        sys.exit("GEMINI_API_KEY not set (or pass --no-gemini)")
+        sys.exit("set GEMINI_API_KEY, or VERTEX_PROJECT + VERTEX_TOKEN (or pass --no-gemini)")
     gem, failures = {}, 0
     cache_path = os.path.join(RAW, f"gemini_{MODEL}.json")
     if key:
