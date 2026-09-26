@@ -10,6 +10,16 @@ import { SpeakVerdict } from "./SpeakVerdict";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 
 type Health = { integrations: Record<string, boolean> };
+type Deal = {
+  dealId: string; listing: string; amountUsd: number; token: string; authId: string;
+  status: "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN"; settlementId?: string; reason?: string; at: string;
+};
+const DEAL_KEY = "shs-deal";
+const LISTINGS = [
+  { label: "Harppa high chair (table prop with the printed CPSC 26-061 label)", amountUsd: 64 },
+  // not $40.00: the sandbox simulator returns AVS_FAILED / PENDING_REVIEW for that exact amount
+  { label: "Used baby item from our table", amountUsd: 45 },
+];
 const CLASS_NAME: Record<string, string> = {
   inclined_or_inbed_sleeper: "infant sleeper", crib_bumper: "crib bumper", drop_side_crib: "drop-side crib", other: "no banned type",
 };
@@ -46,12 +56,45 @@ export function PickupScanner() {
   const [clsMsg, setClsMsg] = useState("");
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [busy, setBusy] = useState("");
+  const [deal, setDeal] = useState<Deal | null>(null);
+  const [dealErr, setDealErr] = useState("");
+  const [pick, setPick] = useState(0);
   const decisionRef = useRef<HTMLDivElement>(null);
+  const inFlight = useRef(false);
+  const dealRef = useRef<Deal | null>(null);
+  dealRef.current = deal;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth(null));
+    try {
+      const saved = sessionStorage.getItem(DEAL_KEY);
+      if (saved) window.setTimeout(() => setDeal(JSON.parse(saved) as Deal), 0);
+    } catch {}
   }, []);
+
+  const saveDeal = (d: Deal | null) => {
+    dealRef.current = d;
+    setDeal(d);
+    try { if (d) sessionStorage.setItem(DEAL_KEY, JSON.stringify(d)); else sessionStorage.removeItem(DEAL_KEY); } catch {}
+  };
+
+  async function startDeal() {
+    setDealErr("");
+    setBusy("Asking Visa to authorize and hold…");
+    try {
+      const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at });
+      setVerdict(null);
+    } catch (e) {
+      setDealErr((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function classify(file: Blob) {
     setClsMsg("Loading the banned-type model on this device (first time about 90 MB)…");
@@ -74,6 +117,8 @@ export function PickupScanner() {
   }
 
   async function onPhoto(file: File) {
+    // never start a new photo flow while a check (possibly a Visa settlement) is still in flight
+    if (inFlight.current || busy) return;
     setVerdict(null);
     setLabel(null);
     setCls(null);
@@ -107,14 +152,52 @@ export function PickupScanner() {
     await check(next, c);
   }
 
+  /** Settlement results only ever replace a deal that is still HELD (a late or duplicate reply cannot
+   *  overwrite a confirmed CAPTURED or REVERSED). */
+  const settleTo = (patch: Partial<Deal>) => {
+    const cur = dealRef.current;
+    if (cur && cur.status === "HELD") saveDeal({ ...cur, ...patch });
+  };
+
   async function check(f = fields, c = cls) {
-    setBusy("Checking recalls…");
-    const r = await fetch("/api/check", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...f, cls: c ? { cls: c.cls, p: c.p } : undefined }),
-    });
-    const j = (await r.json()) as { verdict: Verdict };
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await runCheck(f, c);
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  async function runCheck(f: typeof fields, c: ClassifyResult | null) {
+    const deal = dealRef.current;
+    const settling = deal?.status === "HELD";
+    setBusy(settling ? "Checking recalls and settling the hold with Visa…" : "Checking recalls…");
+    const payload = { ...f, cls: c ? { cls: c.cls, p: c.p } : undefined };
+    let r: Response;
+    try {
+      r = await fetch(settling ? "/api/pickup" : "/api/check", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(settling ? { ...payload, token: deal!.token } : payload),
+      });
+    } catch {
+      setBusy("");
+      // the settle request may have reached the server: mark UNKNOWN so the next scan cannot re-post the token
+      if (settling) settleTo({ status: "UNKNOWN", reason: "connection lost" });
+      setDealErr(settling ? "The connection dropped while settling. The hold may or may not have settled: do not retry, check the Visa Business Center." : "The check did not run (connection lost). Nothing was decided.");
+      return;
+    }
+    const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
+      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; error?: string };
+    if (!r.ok || !j.verdict) {
+      setBusy("");
+      // 400 (our validation), 403 (bad token) and 503 (no Visa keys) are answered before Visa is called
+      if (settling && ![400, 403, 503].includes(r.status)) settleTo({ status: "UNKNOWN", reason: `HTTP ${r.status}` });
+      setDealErr(`${j.error ?? `HTTP ${r.status}`}${settling ? " The hold may or may not have settled: do not retry, check the Visa Business Center." : ""}`);
+      return;
+    }
     setVerdict(j.verdict);
+    if (settling && j.status) settleTo({ status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason });
     setBusy("");
     requestAnimationFrame(() => {
       if (prefersReducedMotion() || !decisionRef.current) return;
@@ -148,7 +231,7 @@ export function PickupScanner() {
         <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = ""; }} />
         <div className="mt-5 flex flex-wrap gap-3 items-center">
-          <SquashButton onClick={() => inputRef.current?.click()} accent="var(--amber)">{photo ? "Retake photo" : "Take the label photo"}</SquashButton>
+          <SquashButton onClick={() => inputRef.current?.click()} disabled={!!busy} accent="var(--amber)">{photo ? "Retake photo" : "Take the label photo"}</SquashButton>
           {busy && <span className="font-bold text-ink/70" role="status">{busy}</span>}
         </div>
         {labelMsg && <p className="mt-4 rounded-xl bg-amber-soft p-3 font-semibold">{labelMsg}</p>}
@@ -161,17 +244,52 @@ export function PickupScanner() {
                 className="mt-1 w-full rounded-xl border-2 border-ink px-3 py-2.5 font-mono uppercase focus:outline-none focus:ring-4 focus:ring-amber" />
             </label>
           ))}
-          <div className="sm:col-span-3"><SquashButton type="submit" accent="var(--green)">Check what the label says</SquashButton></div>
+          <div className="sm:col-span-3"><SquashButton type="submit" disabled={!!busy} accent="var(--green)">Check what the label says</SquashButton></div>
         </form>
       </div>
 
       <div aria-live="polite" className="grid gap-5">
-        <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${visaLive ? "bg-amber" : "bg-sand"}`}>
-          <p className="text-sm font-extrabold tracking-wider">PAYMENT</p>
-          <p className="display text-4xl mt-1">{visaLive ? "HELD" : "Visa hold not connected here"}</p>
-          <p className="mt-2 font-semibold text-ink/80">
-            {visaLive ? "The buyer's Visa authorization is held until this check decides." : "This deployment has no Visa sandbox keys yet, so the check below decides what would happen to the hold."}
-          </p>
+        <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${!visaLive ? "bg-sand" : !deal ? "bg-paper" : deal.status === "HELD" ? "bg-amber" : deal.status === "CAPTURED" ? "bg-green text-paper" : deal.status === "REVERSED" ? "bg-red text-paper" : "bg-sand"}`}>
+          <p className="text-sm font-extrabold tracking-wider">PAYMENT · VISA ACCEPTANCE SANDBOX</p>
+          {!visaLive && (
+            <>
+              <p className="display text-4xl mt-1">Visa hold not connected here</p>
+              <p className="mt-2 font-semibold text-ink/80">This deployment has no Visa sandbox keys yet, so the check decides what would happen to the hold.</p>
+            </>
+          )}
+          {visaLive && !deal && (
+            <>
+              <p className="display text-4xl mt-1">Agree on a price</p>
+              <div className="mt-4 grid gap-2">
+                {LISTINGS.map((l, i) => (
+                  <label key={l.label} className="flex items-center gap-3 rounded-xl border-2 border-ink bg-sand/60 px-3 py-2 font-semibold cursor-pointer">
+                    <input type="radio" name="listing" checked={pick === i} onChange={() => setPick(i)} />
+                    <span className="flex-1">{l.label}</span><b>${l.amountUsd.toFixed(2)}</b>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4"><SquashButton onClick={startDeal} accent="var(--amber)">Agree and hold the payment</SquashButton></div>
+              <p className="mt-3 text-xs font-semibold text-ink/60">Authorizes Visa&apos;s sandbox test card with capture off. Card entry by Microform is next.</p>
+            </>
+          )}
+          {visaLive && deal && (
+            <>
+              <p className="display text-5xl mt-1">{deal.status}</p>
+              <p className="mt-1 display text-2xl">${deal.amountUsd.toFixed(2)}</p>
+              <p className="mt-1 font-semibold opacity-80">{deal.listing}</p>
+              <dl className="mt-3 text-xs font-mono grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 opacity-90">
+                <dt>authorization</dt><dd className="break-all">{deal.authId}</dd>
+                {deal.settlementId && (deal.status === "CAPTURED" || deal.status === "REVERSED") && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
+                <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
+              </dl>
+              {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}){deal.reason === "MISSING_AUTH" ? ": this hold was already settled or is not open" : ""}. Visa did not apply it.</p>}
+              {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
+              {deal.status === "HELD"
+                ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>
+                : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">Start a new deal</button>}
+            </>
+          )}
+          {dealErr && <p className="mt-3 rounded-xl bg-paper text-red-deep p-3 font-bold">{dealErr}</p>}
         </div>
         {cls && (
           <div className="rounded-[2rem] bg-aqua-soft border-[3px] border-ink p-6">
