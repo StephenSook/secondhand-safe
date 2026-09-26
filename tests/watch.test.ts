@@ -4,6 +4,7 @@ import { parseSubscription } from "@/server/watch/push";
 import { POST as simulate } from "@/app/api/watch/simulate/route";
 import { POST as subscribe } from "@/app/api/watch/subscribe/route";
 import { GET as cronWatch } from "@/app/api/cron/watch/route";
+import { pub } from "@/server/deals/store";
 
 const sale = (id: string, model: string | null, batch: string | null = null): Sale => ({ _id: id, listing: "Harppa high chair (table prop with the printed recall label)", label: { model, batch, date: null, upc: null } });
 
@@ -63,5 +64,17 @@ describe("recall-watch routes", () => {
     expect((await cronWatch(new Request("http://x"))).status).toBe(503);
     vi.stubEnv("CRON_SECRET", ["unit", "test", "value"].join("-"));
     expect((await cronWatch(new Request("http://x", { headers: { authorization: "Bearer wrong" } }))).status).toBe(401);
+  });
+});
+
+describe("labels stay server-side", () => {
+  it("the public deal has no label (model, batch, date, UPC)", () => {
+    const d = pub({ _id: "shs-1", listing: "t", amountUsd: 1, status: "CAPTURED", card: null, agent: null, createdAt: "x", updatedAt: "x", events: [],
+      label: { model: "ZZT9Q41X", batch: "B1", date: null, upc: null } });
+    expect(d).not.toHaveProperty("label");
+    expect(JSON.stringify(d)).not.toContain("ZZT9Q41X");
+  });
+  it("a hypothetical model keeps only letters, digits, spaces and dashes (no newlines into a notification)", () => {
+    expect(parseHypothetical({ model: "ZZT9\nQ41X!!" })?.model).toBe("ZZT9Q41X");
   });
 });

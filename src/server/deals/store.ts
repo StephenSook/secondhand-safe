@@ -99,9 +99,9 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
 }
 
 /** Only fields a buyer and seller both see at the curb; no card data, no Visa ids. */
-export type PublicDeal = Omit<DealRecord, "_id" | "authId"> & { dealId: string };
+export type PublicDeal = Omit<DealRecord, "_id" | "authId" | "label"> & { dealId: string };
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const pub = (d: DealRecord): PublicDeal => { const { _id, authId, ...rest } = d; return { dealId: _id, ...rest }; };
+export const pub = (d: DealRecord): PublicDeal => { const { _id, authId, label, ...rest } = d; return { dealId: _id, ...rest }; };
 
 /** What the PUBLIC board and its change stream show for one deal: an explicit allowlist (never authId, never
  *  sweepAttemptAt, never a field added later by accident), and only listing text we wrote (catalog titles,
@@ -185,14 +185,14 @@ export function watchedSales(limit = 1000) {
 }
 
 /** Flags a captured sale with a recall announced after it (once per recall); true when newly flagged. */
-export function flagPostSaleRecall(dealId: string, r: { recallNumber: string; title: string; url: string }) {
+export function flagPostSaleRecall(dealId: string, r: { recallNumber: string; title: string; url: string }, notified = 0) {
   return safely("flagPostSaleRecall", async () => {
     const c = await deals();
     if (!c) return false;
     const at = new Date().toISOString();
     const res = await c.updateOne({ _id: dealId, status: "CAPTURED", "postSaleRecall.recallNumber": { $ne: r.recallNumber } },
       { $set: { postSaleRecall: { ...r, at }, updatedAt: at },
-        $push: { events: { at, status: "CAPTURED", note: `Recall announced after the sale: CPSC ${r.recallNumber}. The buyer was notified.` } } });
+        $push: { events: { at, status: "CAPTURED", note: `Recall announced after the sale: CPSC ${r.recallNumber}. Notified ${notified} watching browser${notified === 1 ? "" : "s"}.` } } });
     return res.modifiedCount === 1;
   });
 }

@@ -29,9 +29,9 @@ export function recheckSales(sales: Sale[]): RealHit[] {
 /** A hypothetical recall typed for the demo: a model number, optionally the recalled batches. */
 export function parseHypothetical(b: unknown): { model: string; batches: string[] } | null {
   const o = b as { model?: unknown; batch?: unknown } | null;
-  const model = typeof o?.model === "string" ? o.model.trim().slice(0, 40) : "";
+  const model = typeof o?.model === "string" ? o.model.replace(/[^A-Za-z0-9 -]/g, "").trim().slice(0, 40) : "";
   if (fold(model).length < 4) return null;
-  const batches = typeof o?.batch === "string" && o.batch.trim() ? o.batch.split(",").map((x) => x.trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [];
+  const batches = typeof o?.batch === "string" && o.batch.trim() ? o.batch.split(",").map((x) => x.replace(/[^A-Za-z0-9 -]/g, "").trim().slice(0, 30)).filter(Boolean).slice(0, 10) : [];
   return { model, batches };
 }
 

@@ -2,8 +2,18 @@
 
 import { useState } from "react";
 
-type Hit = { dealId: string; listing: string; matchedModel: string; batchCheck: string };
-type Result = { watchedSales: number; matches: Hit[]; notified: { sent: number; failed: number }; hypothetical: { model: string; batches: string[] } };
+type Result = { watchedSales: number; affected: number; hypothetical: { model: string; batches: string[] };
+  yourSale: { affected: boolean; batchCheck: string | null; notified: number } | null };
+
+/** The sale this browser just completed on /pickup, if any: its deal token lets only YOUR sale be notified. */
+function myToken(): string | undefined {
+  try {
+    const d = JSON.parse(sessionStorage.getItem("shs-deal") ?? "null") as { status?: string; token?: string } | null;
+    return d?.status === "CAPTURED" && typeof d.token === "string" ? d.token : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The labelled simulation: a hypothetical recall re-checked against every real captured sale (nothing is saved). */
 export function WatchSimulator({ suggestions }: { suggestions: string[] }) {
@@ -15,7 +25,7 @@ export function WatchSimulator({ suggestions }: { suggestions: string[] }) {
   async function run(m = model) {
     setBusy(true); setErr(""); setRes(null);
     try {
-      const r = await fetch("/api/watch/simulate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: m, batch }) });
+      const r = await fetch("/api/watch/simulate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: m, batch, token: myToken() }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       setRes(j);
@@ -42,19 +52,17 @@ export function WatchSimulator({ suggestions }: { suggestions: string[] }) {
           {busy ? "Re-checking…" : "Re-check every sale"}
         </button>
       </form>
-      {suggestions.length > 0 && (
-        <p className="mt-3 text-sm font-semibold">Models from real sales on our demo table:{" "}
-          {suggestions.map((s) => <button key={s} type="button" onClick={() => { setModel(s); void run(s); }} className="mr-2 underline font-mono">{s}</button>)}
-        </p>
-      )}
+      <p className="mt-3 text-sm font-semibold">Try the clean label on our demo table:{" "}
+        {suggestions.map((s) => <button key={s} type="button" onClick={() => { setModel(s); void run(s); }} className="mr-2 underline font-mono">{s}</button>)}
+      </p>
       {err && <p role="alert" className="mt-3 font-bold text-red-deep">{err}</p>}
       {res && (
         <div role="status" className="mt-4 rounded-2xl bg-sand p-4 font-semibold">
-          <p>Re-checked {res.watchedSales} real captured sales for model <b className="font-mono">{res.hypothetical.model}</b>: {res.matches.length === 0 ? "none would be affected." : `${res.matches.length} would be affected.`}</p>
-          <ul className="mt-2 grid gap-1">
-            {res.matches.map((h) => <li key={h.dealId}>Sale <a className="underline" href={`/deal/${h.dealId}`}>{h.dealId}</a> ({h.listing}): model {h.matchedModel}, batch {h.batchCheck}</li>)}
-          </ul>
-          <p className="mt-2 text-sm">Notifications sent to watching browsers: {res.notified.sent}. They are titled &quot;Simulated recall (demo)&quot;. Nothing was written to any sale.</p>
+          <p>Re-checked {res.watchedSales} real captured sales for model <b className="font-mono">{res.hypothetical.model}</b>: {res.affected === 0 ? "none would be affected." : `${res.affected} would be affected.`}</p>
+          {res.yourSale && (
+            <p className="mt-2">Your sale: {res.yourSale.affected ? `affected (batch ${res.yourSale.batchCheck}). ${res.yourSale.notified ? "Your browser was just notified." : "Turn on the recall watch on /pickup to get the notification."}` : "not affected."}</p>
+          )}
+          <p className="mt-2 text-sm">Only your own sale can be notified, titled &quot;Simulated recall (demo)&quot;. No sale is named here and nothing was written.</p>
         </div>
       )}
     </div>
