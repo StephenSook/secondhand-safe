@@ -117,6 +117,8 @@ export function PickupScanner() {
   }
 
   async function onPhoto(file: File) {
+    // never start a new photo flow while a check (possibly a Visa settlement) is still in flight
+    if (inFlight.current || busy) return;
     setVerdict(null);
     setLabel(null);
     setCls(null);
@@ -229,7 +231,7 @@ export function PickupScanner() {
         <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = ""; }} />
         <div className="mt-5 flex flex-wrap gap-3 items-center">
-          <SquashButton onClick={() => inputRef.current?.click()} accent="var(--amber)">{photo ? "Retake photo" : "Take the label photo"}</SquashButton>
+          <SquashButton onClick={() => inputRef.current?.click()} disabled={!!busy} accent="var(--amber)">{photo ? "Retake photo" : "Take the label photo"}</SquashButton>
           {busy && <span className="font-bold text-ink/70" role="status">{busy}</span>}
         </div>
         {labelMsg && <p className="mt-4 rounded-xl bg-amber-soft p-3 font-semibold">{labelMsg}</p>}
