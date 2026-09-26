@@ -2,7 +2,7 @@
 
 import { useImperativeHandle, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import Link from "next/link";
-import { DEAL_KEY, STORAGE_BLOCKED, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth, type Held } from "./holdGuard";
+import { DEAL_KEY, STORAGE_BLOCKED, stale, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth, type Held } from "./holdGuard";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
 
@@ -62,7 +62,8 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   const stored = useSyncExternalStore(noSubscribe, readBoth, () => "\n");
   // re-evaluated on every render (not memoized), so a hold that ages past its 12 h life stops blocking
   const restored = openHold(stored);
-  const shownHeld = held ?? restored;
+  // the in-memory hold ages out exactly like the stored one
+  const shownHeld = (held && !(held.at && stale(held.at)) ? held : null) ?? restored;
 
   /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
   async function speakSummary(r: ShopResponse, lang: "en" | "es") {
@@ -172,7 +173,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
         handoff = false; // private mode or storage blocked: the pickup page could not find this hold
       }
       if (handoff) clearPending(); // the pending marker stays the blocker if the confirmed deal could not be stored
-      setHeld({ id: l.id, handoff, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
+      setHeld({ id: l.id, handoff, at: m.at, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
     } catch (e) {
       if (clearNo) {
         clearPending();

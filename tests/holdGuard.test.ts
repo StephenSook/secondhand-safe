@@ -49,3 +49,11 @@ describe("the guard never blocks forever and never invents a purchase", () => {
     expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: fresh })}\n`)).not.toBeNull();
   });
 });
+
+describe("an unconfirmed settlement never ages out on its own", () => {
+  it("an UNKNOWN deal keeps blocking after 12 h (money may have moved); a stale HELD does not", () => {
+    const old = new Date(Date.now() - 20 * 3_600_000).toISOString();
+    expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "UNKNOWN", at: old })}\n`)).not.toBeNull();
+    expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: old })}\n`)).toBeNull();
+  });
+});
