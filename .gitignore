@@ -30,6 +30,7 @@ ml/out/*
 !ml/out/metrics.json
 !ml/out/split.json
 !ml/out/finetune_b2.json
+!ml/out/lookalike_eval.json
 data/raw/
 mobile/.expo/
 mobile/ios/

@@ -12,10 +12,11 @@ const mode = process.argv[3] ?? "labels";
 const firstPhotos = (f) => fs.readFileSync(f, "utf8").trim().split("\n").map((l) => JSON.parse(l).images[0]);
 const urls = mode === "listings" ? firstPhotos("ml/data/listings.jsonl")
   : mode === "recalls" ? firstPhotos("ml/data/cpsc_recall_photos.jsonl")
+  : mode === "recalls2" ? firstPhotos("ml/data/cpsc_recall_photos_2nd.jsonl") // held-out second photos (PLAN 5.2 eval)
   : fs.readFileSync("ml/labels.csv", "utf8").trim().split("\n").slice(1).map((l) => l.split(",")[0]);
 const imgPath = (u) => `ml/data/img/${crypto.createHash("sha1").update(u).digest("hex").slice(0, 16)}.img`;
 // A recall photo the fetcher refused (WAF page, dead link) is skipped and counted, never embedded as garbage.
-const skipMissing = mode === "recalls";
+const skipMissing = mode === "recalls" || mode === "recalls2";
 let skipped = 0;
 const processor = await AutoProcessor.from_pretrained("Xenova/clip-vit-base-patch32");
 const model = await CLIPVisionModelWithProjection.from_pretrained("Xenova/clip-vit-base-patch32", { dtype });
