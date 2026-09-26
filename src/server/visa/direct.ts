@@ -234,7 +234,18 @@ export interface Classified {
   status: Exclude<PayoutStatus, "NOT_CONFIGURED">;
   note: string;
   actionCode?: string; transactionIdentifier?: string; approvalCode?: string; statusIdentifier?: string; errorCode?: string;
+  /** partial approval only: the amount Visa's reply states, when it states one */
+  processedAmount?: string;
 }
+
+/**
+ * Visa action codes, per the actionCode table at https://developer.visa.com/request_response_codes:
+ * "00 Approved and completed successfully", "11 Approved (V.I.P)", "10 Partial approval". Every other code is not
+ * an approval. That table names no field for the partially approved amount, so a partial approval is kept
+ * UNCERTAIN (never shown as a full payout) and the reply's `amount`, if it has one, is recorded as stated.
+ */
+export const APPROVED_ACTION_CODES: ReadonlySet<string> = new Set(["00", "11"]);
+export const PARTIAL_ACTION_CODE = "10";
 
 const str = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v).slice(0, 40) : undefined);
 /** error text from Visa, with any long digit run (a card number, if one were ever echoed) removed */
@@ -249,8 +260,14 @@ export function classify(httpStatus: number, body: unknown): Classified {
   };
   const kept = Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined));
   if (httpStatus === 200) {
-    // [ERRORS] 200: "The Action Code returned in the response indicates the outcome"; 00 is approved (ISO 8583)
-    if (keep.actionCode === "00") return { status: "SENT", note: "Visa Direct approved the push to the seller", ...kept };
+    // [ERRORS] 200: "The Action Code returned in the response indicates the outcome"; meanings per the actionCode
+    // table (APPROVED_ACTION_CODES above)
+    if (keep.actionCode && APPROVED_ACTION_CODES.has(keep.actionCode)) return { status: "SENT", note: `Visa Direct approved the push to the seller (action code ${keep.actionCode})`, ...kept };
+    if (keep.actionCode === PARTIAL_ACTION_CODE) {
+      const processedAmount = str(b.amount);
+      return { status: "UNCERTAIN", note: `Visa Direct partially approved the push (action code 10)${processedAmount ? `, reply amount ${processedAmount}` : ", amount not stated"}; not the full payout, not re-sent`,
+        ...kept, ...(processedAmount ? { processedAmount } : {}) };
+    }
     if (keep.actionCode) return { status: "FAILED", note: `Visa Direct processed the push and did not approve it (action code ${keep.actionCode})`, ...kept };
     return { status: "UNCERTAIN", note: "Visa Direct answered 200 without an action code; not re-sent", ...kept };
   }
@@ -345,6 +362,7 @@ export interface PayoutDoc {
   amountCents: number; recipientLast4: string; stan: string; rrn: string; claimedAt: string; finishedAt?: string;
   httpStatus?: number; note?: string; correlationId?: string;
   actionCode?: string; transactionIdentifier?: string; approvalCode?: string; statusIdentifier?: string; errorCode?: string;
+  processedAmount?: string;
 }
 
 export interface PayoutStore {

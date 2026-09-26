@@ -35,7 +35,7 @@ import {
   TransportError, VISA_DIRECT_ENV, type PayoutDoc, type PayoutStore, type Transport,
 } from "@/server/visa/direct";
 import { integrationStatus } from "@/server/env";
-import { boardDeal, recordPayout, type DealRecord } from "@/server/deals/store";
+import { boardDeal, recordPayout, recordSettlementStatus, type DealRecord } from "@/server/deals/store";
 import { summarize } from "@/server/deals/trust";
 import { payoutAfterCapture } from "@/server/deals/payout";
 
@@ -113,6 +113,27 @@ describe("payload builder", () => {
     expect(traceNumbers("shs-a", new Date(Date.UTC(2026, 0, 1))).rrn.slice(1, 4)).toBe("001");
     expect(traceNumbers("shs-a", new Date()).stan).toBe(a.stan);
     expect(traceNumbers("shs-b", new Date()).stan).not.toBe(a.stan);
+  });
+
+  it("maps Visa action codes per the published table: 00 and 11 approve, 10 is partial, the rest decline", () => {
+    expect(classify(200, { actionCode: "00", approvalCode: "A1" })).toMatchObject({ status: "SENT", actionCode: "00" });
+    expect(classify(200, { actionCode: "11", approvalCode: "A1" })).toMatchObject({ status: "SENT", actionCode: "11" });
+    const partial = classify(200, { actionCode: "10", amount: "6.17" });
+    expect(partial).toMatchObject({ status: "UNCERTAIN", actionCode: "10", processedAmount: "6.17" });
+    expect(partial.note).toMatch(/partially approved/);
+    expect(classify(200, { actionCode: "10" })).toMatchObject({ status: "UNCERTAIN" });
+    expect(classify(200, { actionCode: "10" })).not.toHaveProperty("processedAmount");
+    for (const code of ["65", "05", "51", "01", "12"]) expect(classify(200, { actionCode: code })).toMatchObject({ status: "FAILED", actionCode: code });
+  });
+
+  it("an 11 is recorded SENT and a 10 is stored UNCERTAIN with the stated amount, never a full success", async () => {
+    const store = memoryStore();
+    const t11 = vi.fn<Transport>(async () => ({ httpStatus: 200, text: '{"actionCode":"11","transactionIdentifier":9}' }));
+    expect((await pushFunds({ dealId: "shs-11", amountUsd: 4, recipientPan: fakePan() }, { env: fakeEnv(), store, transport: t11 })).status).toBe("SENT");
+    const t10 = vi.fn<Transport>(async () => ({ httpStatus: 200, text: '{"actionCode":"10","amount":"2.00"}' }));
+    const r = await pushFunds({ dealId: "shs-10", amountUsd: 4, recipientPan: fakePan() }, { env: fakeEnv(), store, transport: t10 });
+    expect(r.status).toBe("UNCERTAIN");
+    expect(store.docs.get("shs-10")).toMatchObject({ state: "UNCERTAIN", actionCode: "10", processedAmount: "2.00" });
   });
 
   it("classifies Visa's answers", () => {
@@ -344,6 +365,18 @@ describe("the card number never leaves the module", () => {
     db.on = false; // the timeline write degrades too, quickly
     const t = vi.fn<Transport>(async () => { throw new Error("boom"); });
     await expect(payoutAfterCapture({ dealId: "shs-never", amountUsd: 2 }, { env: fakeEnv(), store: memoryStore(), transport: t })).resolves.toMatchObject({ status: "UNCERTAIN" });
+  });
+});
+
+describe("recordSettlementStatus", () => {
+  it("returns the status the write left behind, not the one it was asked to write", async () => {
+    const deals = db.db.collection("deals") as unknown as Record<string, unknown>;
+    deals.findOneAndUpdate = async () => ({ _id: "shs-rev", status: "REVERSED" });
+    const orig = db.db.collection;
+    db.db.collection = ((n: string) => (n === "deals" ? deals : orig(n))) as typeof db.db.collection;
+    try {
+      expect(await recordSettlementStatus("shs-rev", { status: "CAPTURED", verdict: { kind: "NO_MATCH", reason: "r" } })).toBe("REVERSED");
+    } finally { db.db.collection = orig; }
   });
 });
 
