@@ -24,6 +24,8 @@ export interface RecallDoc {
   units: string;
   images: string[];
   identifiers: Identifier[];
+  /** NHTSA child-seat campaigns: recalled manufacture date range, YYYYMMDD. */
+  mfgRange?: { from: string; to: string } | null;
 }
 
 export interface Verdict {

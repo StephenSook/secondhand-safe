@@ -5,7 +5,7 @@
 Buying a used crib, bassinet or car seat from a stranger? SecondHand Safe holds the buyer's Visa payment
 when the deal is agreed. At pickup, one photo of the product label is read (barcode on the phone, label
 text by Gemini, product type by our own model running in the browser) and checked against every CPSC
-nursery and children's recall plus the product types that are banned outright. Clean: the hold is
+nursery and children's recall, NHTSA's child car seat recalls, plus the product types that are banned outright. Clean: the hold is
 captured. Recalled or banned: the hold is reversed, and nobody takes the risk home.
 
 Live: **https://secondhand-safe-web.vercel.app** · Judges: [/judge](https://secondhand-safe-web.vercel.app/judge)
@@ -28,6 +28,7 @@ curl https://secondhand-safe-web.vercel.app/api/stats
 | | |
 |---|---|
 | CPSC recalls fetched / nursery and children's kept | 6036 / 1137 |
+| NHTSA child car seat recall campaigns (since 2010) | 71 |
 | Real marketplace listings scanned | 1662 |
 | Banned-type model, held-out macro-F1 (95% CI) | 0.7243 (0.6017 to 0.8127) |
 | Off-the-shelf CLIP zero-shot on the same held-out set | 0.558 |

@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/#how", label: "How it works" },
   { href: "/#check", label: "Live check" },
   { href: "/#oracle", label: "The model" },
+  { href: "/map", label: "Atlanta scan" },
   { href: "/pickup", label: "Pickup scan" },
   { href: "/judge", label: "Judges" },
 ];

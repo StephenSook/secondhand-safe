@@ -4,7 +4,7 @@ import type { ProductClass } from "@/core/verdict";
 /**
  * Public recall check. Anyone can run it, no key:
  *   curl "https://<host>/api/check?model=BHC001&batch=202408"
- * Query: model, batch, upc, text (free label text), cls + p (classifier output).
+ * Query: model, batch, date (manufacture date, car seats), upc, text (free label text), cls + p (classifier output).
  */
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 
@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   const verdict = checkLabel({
     model: get("model"),
     batch: get("batch"),
+    date: get("date"),
     upc: get("upc"),
     text: get("text"),
     cls: clsName && Number.isFinite(p) ? { cls: clsName, p } : undefined,
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 200) : undefined);
   const cls = b.cls as { cls?: string; p?: number } | undefined;
   const verdict = checkLabel({
-    model: str(b.model), batch: str(b.batch), upc: str(b.upc), text: str(b.text),
+    model: str(b.model), batch: str(b.batch), date: str(b.date), upc: str(b.upc), text: str(b.text),
     cls: cls && CLASSES.includes(cls.cls as ProductClass) && typeof cls.p === "number"
       ? { cls: cls.cls as ProductClass, p: cls.p } : undefined,
   });

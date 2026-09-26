@@ -52,6 +52,24 @@ describe("checkLabel against the real CPSC index", () => {
   });
 });
 
+describe("NHTSA child seats (real campaign 26C001000, Evenflo Titan 65, made 03/2025 to 12/2025)", () => {
+  it("a recalled seat model without a readable date needs the date", () => {
+    const v = checkLabel({ model: "3712198" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("26C001000");
+    expect(v.reason).toMatch(/03\/2025 to 12\/2025/);
+  });
+  it("inside the recalled date range is a recall match", () => {
+    expect(checkLabel({ model: "3712198", date: "07/15/2025" }).kind).toBe("RECALL_MATCH");
+    expect(checkLabel({ model: "3712198", date: "AUG 2025" }).kind).toBe("RECALL_MATCH");
+  });
+  it("outside the range still needs the used-seat check, never a clean pass", () => {
+    const v = checkLabel({ model: "3712198", date: "2024-01-10" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.reason).toMatch(/outside/);
+  });
+});
+
 describe("legal rules (PLAN D3)", () => {
   it("crib bumper from the classifier is BANNED_TYPE", () => {
     expect(checkLabel({ cls: { cls: "crib_bumper", p: 0.9 } }).kind).toBe("BANNED_TYPE");

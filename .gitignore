@@ -41,3 +41,6 @@ data/__pycache__/
 test-results/
 playwright-report/
 .vercel
+
+# copied at build time by scripts/copy-maplibre.mjs
+public/vendor/

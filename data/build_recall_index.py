@@ -133,6 +133,57 @@ def gemini_extract(rec, key):
     raise RuntimeError(f"gemini failed for {rec.get('RecallNumber')}: {r.status_code}")
 
 
+NHTSA_ZIP = os.path.join(ROOT, "ml", "data", "nhtsa", "FLAT_RCL_POST_2010.zip")
+NHTSA_URL = "https://static.nhtsa.gov/odi/ffdd/rcl/FLAT_RCL_POST_2010.zip"
+
+
+def nhtsa_child_seats():
+    """NHTSA recalls of child restraints (RCLTYPECD == 'C'), one record per campaign. Field order from NHTSA's
+    RCL.txt. The file is fetched with a browser User-Agent (a bare client gets a 20-byte stub) and must be a zip."""
+    import io
+    import zipfile
+    if not os.path.exists(NHTSA_ZIP):
+        os.makedirs(os.path.dirname(NHTSA_ZIP), exist_ok=True)
+        r = requests.get(NHTSA_URL, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126"}, timeout=180)
+        if r.content[:4] != b"PK\x03\x04":
+            sys.exit(f"NHTSA returned {len(r.content)} bytes that are not a zip; refusing")
+        open(NHTSA_ZIP, "wb").write(r.content)
+    z = zipfile.ZipFile(NHTSA_ZIP)
+    camps = {}
+    for line in io.TextIOWrapper(z.open(z.namelist()[0]), encoding="latin-1"):
+        f = line.rstrip("\n").split("\t")
+        if len(f) < 23 or f[10].strip() != "C":
+            continue
+        c = camps.setdefault(f[1].strip(), {"make": f[2].strip(), "models": set(), "bg": [], "end": [], "defect": f[19].strip(),
+                                            "remedy": f[21].strip(), "units": f[11].strip(), "date": f[15].strip()})
+        c["models"].add(f[3].strip())
+        if f[8].strip():
+            c["bg"].append(f[8].strip())
+        if f[9].strip():
+            c["end"].append(f[9].strip())
+    out = []
+    for camp, c in camps.items():
+        ids = {}
+        m, b, u = regex_extract(c["defect"])
+        for v in m:
+            ids.setdefault(("model", fold(v)), {"kind": "model", "value": v, "found_by": ["regex"]})
+        for name in c["models"]:
+            # multi-word model names only: a single word like "TITAN" collides with too much label text
+            if len(name.split()) >= 2 and len(fold(name)) >= 6:
+                ids.setdefault(("model", fold(name)), {"kind": "model", "value": name, "found_by": ["nhtsa_model_field"]})
+        d = c["date"]
+        out.append({
+            "source": "NHTSA", "recallNumber": camp, "recallDate": f"{d[:4]}-{d[4:6]}-{d[6:8]}" if len(d) == 8 else "",
+            "title": f"{c['make'].title()} {', '.join(sorted(n.title() for n in c['models']))[:120]} child seat recall",
+            "url": f"https://www.nhtsa.gov/recalls?nhtsaId={camp}",
+            "products": sorted(c["models"]), "brands": [c["make"].title()], "productType": "child car seat",
+            "hazard": c["defect"][:600], "remedy": c["remedy"][:600], "units": c["units"], "images": [],
+            "mfgRange": {"from": min(c["bg"]), "to": max(c["end"])} if c["bg"] and c["end"] else None,
+            "identifiers": list(ids.values()),
+        })
+    return out
+
+
 def build(use_gemini):
     os.makedirs(RAW, exist_ok=True)
     recs = []
@@ -209,10 +260,12 @@ def build(use_gemini):
             "images": [i.get("URL") for i in r.get("Images") or [] if i.get("URL")][:4],
             "identifiers": list(ids.values()),
         })
+    nhtsa = nhtsa_child_seats()
+    out += nhtsa
     out.sort(key=lambda x: x["recallDate"], reverse=True)
     json.dump(out, open(os.path.join(OUT, "recalls.json"), "w"), separators=(",", ":"))
     stats.update({"asOf": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-                  "recallsFetched": len(recs), "nurseryRecalls": len(out),
+                  "recallsFetched": len(recs), "nurseryRecalls": len(out) - len(nhtsa), "nhtsaChildSeatCampaigns": len(nhtsa),
                   "withAnyIdentifier": sum(1 for x in out if x["identifiers"]),
                   "identifiers": sum(len(x["identifiers"]) for x in out), "geminiValuesRejected": rejected,
                   "geminiModel": MODEL if key and gem else None, "geminiRecords": len(gem)})

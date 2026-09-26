@@ -42,6 +42,8 @@ export const INDEX_SIZE = { recalls: RECALLS.length, models: byModel.size, upcs:
 export interface LabelInput {
   model?: string;
   batch?: string;
+  /** Manufacture date as printed on the label (car seats print it). */
+  date?: string;
   upc?: string;
   /** Free text read from the label or listing (used for mesh-liner and car-seat rules). */
   text?: string;
@@ -50,10 +52,41 @@ export interface LabelInput {
 
 const batchesOf = (r: RecallDoc) => r.identifiers.filter((i) => i.kind === "batch").map((i) => i.value);
 
-function recallVerdict(entry: Entry, field: "model" | "upc", value: string, batch?: string): Verdict {
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+/** Label date -> YYYYMM, or null. Accepts 2025-12-15, 12/15/2025, 12/2025, 2025/12, DEC 2025, 15 DEC 2025. */
+export function labelMonth(raw?: string): string | null {
+  if (!raw) return null;
+  const s = raw.toUpperCase().trim();
+  let m = s.match(/^(20\d\d)[-/.](\d{1,2})/);
+  if (m) return `${m[1]}${m[2].padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})[-/.](?:\d{1,2}[-/.])?(20\d\d)$/);
+  if (m) return `${m[2]}${m[1].padStart(2, "0")}`;
+  m = s.match(/([A-Z]{3})[A-Z]*\.?\s*(?:\d{1,2},?\s*)?(20\d\d)/);
+  if (m && MONTHS.includes(m[1])) return `${m[2]}${String(MONTHS.indexOf(m[1]) + 1).padStart(2, "0")}`;
+  return null;
+}
+
+const fmtRange = (d: string) => `${d.slice(4, 6)}/${d.slice(0, 4)}`;
+
+function recallVerdict(entry: Entry, field: "model" | "upc", value: string, batch?: string, date?: string): Verdict {
   const r = entry.recall;
   const batches = batchesOf(r);
   const matched = { field, value, recallValue: entry.value };
+  if (r.mfgRange) {
+    const range = `${fmtRange(r.mfgRange.from)} to ${fmtRange(r.mfgRange.to)}`;
+    const ym = labelMonth(date);
+    if (!ym) {
+      return { kind: "NEEDS_CHECK", recall: r, matched, asOf: INDEX_AS_OF,
+        reason: `${entry.value} seats made ${range} are under NHTSA recall ${r.recallNumber}. Read the manufacture date on the seat label.` };
+    }
+    if (ym < r.mfgRange.from.slice(0, 6) || ym > r.mfgRange.to.slice(0, 6)) {
+      return { kind: "NEEDS_CHECK", recall: r, matched, asOf: INDEX_AS_OF,
+        reason: `This seat's date (${fmtRange(ym + "01")}) is outside NHTSA recall ${r.recallNumber} (${range}). Still do NHTSA's used-seat check: expiration, crash history, all parts.` };
+    }
+    return { kind: "RECALL_MATCH", recall: r, matched, asOf: INDEX_AS_OF,
+      reason: `${entry.value}, made ${fmtRange(ym + "01")}, is inside NHTSA recall ${r.recallNumber} (${range}): ${r.title}` };
+  }
   if (field === "model" && batches.length) {
     if (!batch?.trim()) {
       return { kind: "NEEDS_CHECK", recall: r, matched, asOf: INDEX_AS_OF,
@@ -74,11 +107,11 @@ export function checkLabel(input: LabelInput): Verdict {
   const text = (input.text ?? "").toLowerCase();
   if (input.upc) {
     const hit = byUpc.get(input.upc.replace(/\D/g, ""));
-    if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch);
+    if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
-    if (hit) return recallVerdict(pick(hit), "model", input.model, input.batch);
+    if (hit) return recallVerdict(pick(hit), "model", input.model, input.batch, input.date);
   }
   const c = input.cls && input.cls.p >= CLASS_MIN_P ? input.cls.cls : undefined;
   if (c === "crib_bumper") {
@@ -111,5 +144,5 @@ export function checkLabel(input: LabelInput): Verdict {
       reason: `No CPSC recall match as of ${INDEX_AS_OF}. Car seats also need NHTSA's used-seat check: expiration date, crash history, all parts and the label.` };
   }
   return { kind: "NO_MATCH", asOf: INDEX_AS_OF,
-    reason: `No match in ${INDEX_SIZE.recalls} CPSC nursery and children's recalls as of ${INDEX_AS_OF}.` };
+    reason: `No match in ${INDEX_SIZE.recalls} CPSC and NHTSA child-product recalls as of ${INDEX_AS_OF}.` };
 }

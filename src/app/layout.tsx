@@ -10,7 +10,7 @@ const hand = Caveat({ variable: "--font-hand", subsets: ["latin"], weight: ["500
 export const metadata: Metadata = {
   title: "SecondHand Safe: the money waits for the camera",
   description:
-    "Buying used baby gear from a stranger? SecondHand Safe holds your Visa payment until a camera reads the label at pickup and checks it against real CPSC recalls and banned product types.",
+    "Buying used baby gear from a stranger? SecondHand Safe holds your Visa payment until a camera reads the label at pickup and checks it against real CPSC and NHTSA recalls and banned product types.",
   metadataBase: new URL(process.env.PUBLIC_BASE_URL ?? "http://localhost:3000"),
 };
 

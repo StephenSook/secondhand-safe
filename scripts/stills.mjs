@@ -22,7 +22,7 @@ for (const s of sizes) {
   page.on("pageerror", (e) => errors.push(String(e)));
   for (const p of pages) {
     const slug = p.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home";
-    await page.goto(base + p, { waitUntil: "networkidle" });
+    await page.goto(base + p, { waitUntil: "load" });
     await page.waitForTimeout(3200);
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
     let i = 0;

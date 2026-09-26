@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 200) : undefined);
   const cls = b.cls as { cls?: string; p?: number } | undefined;
   const verdict = checkLabel({
-    model: str(b.model), batch: str(b.batch), upc: str(b.upc), text: str(b.text),
+    model: str(b.model), batch: str(b.batch), date: str(b.date), upc: str(b.upc), text: str(b.text),
     cls: cls && CLASSES.includes(cls.cls as ProductClass) && typeof cls.p === "number" ? { cls: cls.cls as ProductClass, p: cls.p } : undefined,
   });
   const out = await settle(creds, deal, verdict);
