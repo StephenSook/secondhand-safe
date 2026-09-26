@@ -32,11 +32,10 @@ export async function GET(request: Request) {
   const held = await heldBefore(cutoff);
   if (!held) return Response.json({ error: "MongoDB Atlas did not answer; nothing was released." }, { status: 503, headers: NO_STORE });
   const recorded: { dealId: string; status: string; recorded: boolean }[] = [];
-  // Budget from request entry: a reversal can take 20 s (Visa timeout) and its record up to 8 s, so no new one
-  // starts after 25 s and the whole run ends well inside maxDuration (60 s). Each deal is stamped before its
-  // Visa call and its outcome written right after.
+  // Budget from request entry. After the last start: stamp (up to 8 s) + Visa reversal (20 s timeout) + record
+  // (8 s) = 36 s, so no new deal starts after 20 s and the worst case is 56 s, inside maxDuration (60 s).
   await runSweep(creds, planSweep(held, now), {
-    deadline: started + 25_000,
+    deadline: started + 20_000,
     stamp: (id) => recordSweepAttempt(id),
     record: async (o) => {
       const ok = o.status === "UNKNOWN" ? !!(await recordSweepAttempt(o.dealId)) : !!(await recordSweep(o.dealId, o.status, o.note));
