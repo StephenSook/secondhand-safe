@@ -78,7 +78,7 @@ export async function lookalikesByVector(vec: number[], limit = 3): Promise<Look
   const db = await getDb().catch(() => null);
   if (!db) return process.env.MONGODB_URI ? { ok: false, reason: "unavailable", detail: "no connection" } : { ok: false, reason: "unconfigured" };
   try {
-    const docs = await withDeadline(db.collection(VECTOR_COLLECTION).aggregate(pipeline(vec, limit)).toArray(), 6_000);
+    const docs = await withDeadline(db.collection(VECTOR_COLLECTION).aggregate(pipeline(vec, limit), { maxTimeMS: 5_000 }).toArray(), 6_000);
     return { ok: true, matches: docs.map(toLookAlike) };
   } catch (e) {
     return { ok: false, reason: "unavailable", detail: (e as Error).message };
@@ -90,7 +90,7 @@ export async function lookalikesForListing(listingId: string, limit = 3): Promis
   const db = await getDb().catch(() => null);
   if (!db) return process.env.MONGODB_URI ? { ok: false, reason: "unavailable", detail: "no connection" } : { ok: false, reason: "unconfigured" };
   try {
-    const doc = await withDeadline(db.collection(VECTOR_COLLECTION).findOne({ _id: `listing:${listingId}` as never, kind: "listing" }, { projection: { embedding: 1 } }), 4_000);
+    const doc = await withDeadline(db.collection(VECTOR_COLLECTION).findOne({ _id: `listing:${listingId}` as never, kind: "listing" }, { projection: { embedding: 1 }, maxTimeMS: 3_000 }), 4_000);
     const vec = parseVector(doc?.embedding);
     if (!vec) return { ok: false, reason: "not_found" };
     return lookalikesByVector(vec, limit);

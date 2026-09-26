@@ -72,6 +72,7 @@ export function PickupScanner() {
   const [clsMsg, setClsMsg] = useState("");
   // closest CPSC recall photos to this photo (MongoDB Atlas Vector Search); a comparison aid, never a verdict
   const [look, setLook] = useState<{ matches: LookAlike[] } | { error: string } | null>(null);
+  const lookFor = useRef(0); // which photo a look-alike answer belongs to; a late answer for an older photo is dropped
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [busy, setBusy] = useState("");
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -180,9 +181,10 @@ export function PickupScanner() {
       const r = applyHead(head, emb);
       setCls(r);
       // same embedding, sent to Atlas (512 numbers, never the photo)
+      const mine = lookFor.current;
       void fetch("/api/lookalike", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ embedding: Array.from(emb) }) })
-        .then(async (res) => { const j = await res.json(); setLook(res.ok ? { matches: j.matches } : { error: j.error ?? `HTTP ${res.status}` }); })
-        .catch(() => setLook({ error: "The look-alike search did not answer." }));
+        .then(async (res) => { const j = await res.json(); if (lookFor.current === mine) setLook(res.ok ? { matches: j.matches } : { error: j.error ?? `HTTP ${res.status}` }); })
+        .catch(() => { if (lookFor.current === mine) setLook({ error: "The look-alike search did not answer." }); });
       setClsMsg("");
       return r;
     } catch (e) {
@@ -198,6 +200,7 @@ export function PickupScanner() {
     setLabel(null);
     setCls(null);
     setLook(null);
+    lookFor.current += 1;
     setLabelMsg("");
     const url = await toDataUrl(file);
     setPhoto(url);
@@ -427,20 +430,20 @@ export function PickupScanner() {
                 {look.matches.map((m) => (
                   <li key={m.recallNumber} className="grid grid-cols-[4.5rem_1fr] gap-3 items-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={m.image} alt={`CPSC recall ${m.recallNumber} photo`} loading="lazy" referrerPolicy="no-referrer"
+                    <img src={/^https:\/\/(www\.)?cpsc\.gov\//.test(m.image) ? m.image : ""} alt={`CPSC recall ${m.recallNumber} photo`} loading="lazy" referrerPolicy="no-referrer"
                       className="w-[4.5rem] h-[4.5rem] object-cover rounded-xl border-2 border-ink bg-white" />
                     <div className="min-w-0">
                       <p className="font-extrabold leading-tight line-clamp-2">{m.title}</p>
                       <p className="text-sm font-semibold">
-                        {m.strong ? <b>Very close match: compare the label with </b> : "Similar to "}
-                        <a href={m.notice} target="_blank" rel="noreferrer" className="underline">CPSC {m.recallNumber}</a> · similarity {Math.round(m.cosine * 100)}%
+                        {m.strong ? <b>Very similar photo: compare your label with </b> : "Looks somewhat like "}
+                        <a href={m.notice.startsWith("https://") ? m.notice : "https://www.cpsc.gov/Recalls"} target="_blank" rel="noreferrer" className="underline">CPSC {m.recallNumber}</a> · similarity score {m.cosine.toFixed(2)}
                       </p>
                     </div>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="mt-3 text-xs font-semibold text-ink/60">Searched the CPSC recall photos in our index with the embedding this browser computed. Looking alike is a reason to read the label closely, never a verdict: only the label check moves money.</p>
+            <p className="mt-3 text-xs font-semibold text-ink/60">Searched the CPSC recall photos in our index with the embedding this browser computed. Tested on held-out photos, the right recall came back first a bit under half the time, and even very similar photos are sometimes a different product. Looking alike is a reason to read the label closely, never a verdict: only the label check moves money.</p>
           </div>
         )}
         {verdict && (

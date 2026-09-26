@@ -1,4 +1,5 @@
-// Measures the deployed look-alike search (PLAN 5.2) on HELD-OUT photos: for a random sample of recalls with two
+// Measures the deployed look-alike search (PLAN 5.2) on HELD-OUT photos: for a seeded sample (ml/sample_second_photos.py,
+// seed 20260926, 150 recalls) of recalls with two
 // or more CPSC photos, the index holds only photo 1; each recall's photo 2 is embedded with the same transformers.js
 // q8 runtime and sent to the live MongoDB Atlas vector index. Hit@1 / hit@3 = the right recall came back first /
 // in the top 3. Writes ml/out/lookalike_eval.json (tracked).
@@ -31,7 +32,7 @@ try {
   const out = {
     what: "Held-out retrieval: a recall's SECOND CPSC photo, searched against an index holding only each recall's first photo",
     index: "MongoDB Atlas Vector Search img_vec (cosine, 512-d CLIP ViT-B/32 transformers.js q8)",
-    sampleSeed: 20260926, sampled: rows.length, evaluated: cases.length, hit1, hit3,
+    sample: "ml/sample_second_photos.py (seed 20260926)", sampled: rows.length, evaluated: cases.length, hit1, hit3,
     hit1Rate: cases.length ? Math.round((hit1 / cases.length) * 1000) / 1000 : null,
     hit3Rate: cases.length ? Math.round((hit3 / cases.length) * 1000) / 1000 : null,
     asOf: new Date().toISOString(), detail,
