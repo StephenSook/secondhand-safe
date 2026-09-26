@@ -5,7 +5,7 @@ import { verifyDealToken } from "@/server/deals/token";
 import { settle } from "@/server/deals/settle";
 import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
-import { recordSettlement } from "@/server/deals/store";
+import { recordSettlementStatus } from "@/server/deals/store";
 import { payoutAfterCapture } from "@/server/deals/payout";
 import { waitUntil } from "@vercel/functions";
 
@@ -50,15 +50,16 @@ export async function POST(request: Request) {
       passport = { error: `Passport not written: ${(e as Error).message}` };
     }
   }
-  const recorded = recordSettlement(deal.dealId, { status: out.status,
+  const recorded = recordSettlementStatus(deal.dealId, { status: out.status,
     verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
     passportPath: passport && "path" in passport ? passport.path : null,
     label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } });
   // Visa Direct seller payout (PLAN 3.17), only after Visa Acceptance accepts the capture, in the background: it never delays or
   // changes this response. It runs after the settlement write so the timeline reads CAPTURED, then the payout.
-  // Only when the CAPTURED write succeeded, so a payout can never exist on a deal the store does not show as captured.
+  // Only when the deal's EFFECTIVE stored status is CAPTURED: a capture arriving after a recorded reversal or release
+  // leaves the deal REVERSED / RELEASED, and then no payout is sent.
   waitUntil(out.status === "CAPTURED"
-    ? recorded.then((ok) => (ok === true ? payoutAfterCapture({ dealId: deal.dealId, amountUsd: deal.amountUsd }) : null))
+    ? recorded.then((st) => (st === "CAPTURED" ? payoutAfterCapture({ dealId: deal.dealId, amountUsd: deal.amountUsd }) : null))
     : recorded);
   return Response.json({
     dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),

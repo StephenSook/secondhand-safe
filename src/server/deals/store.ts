@@ -73,10 +73,18 @@ export function recordHold(d: { dealId: string; listing: string; amountUsd: numb
   });
 }
 
-export function recordSettlement(dealId: string, s: { status: DealStatus; verdict: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null; label?: SaleLabel | null }) {
-  return safely("recordSettlement", async () => {
+type Settlement = { status: DealStatus; verdict: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null; label?: SaleLabel | null };
+
+/**
+ * Writes a pickup settlement and returns the deal's EFFECTIVE status after the write: a deal that was already
+ * final (CAPTURED, REVERSED, RELEASED, LAPSED) keeps that status, so a late CAPTURED arriving after a reversal
+ * comes back as REVERSED. The payout is gated on this value, never on "the write matched". null: no record, no
+ * database, or the write failed.
+ */
+export function recordSettlementStatus(dealId: string, s: Settlement) {
+  return safely<RecordStatus | null>("recordSettlement", async () => {
     const c = await deals();
-    if (!c) return false;
+    if (!c) return null;
     const at = new Date().toISOString();
     const note = s.status === "CAPTURED" ? "Label passed: Visa captured the payment to the seller"
       : s.status === "REVERSED" ? "Recalled or banned: Visa reversed the hold, the buyer keeps the money"
@@ -85,7 +93,8 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
     // an already-final deal keeps its final status, reason and passport; a later scan is appended to the timeline only
     // RELEASED and LAPSED (hold sweeper) are final too: a late scan can never re-open a released hold
     const final = { $in: ["$status", ["CAPTURED", "REVERSED", "RELEASED", "LAPSED"]] };
-    const update = () => c.updateOne({ _id: dealId }, [{ $set: {
+    // one atomic write that also hands back the status it left behind
+    const update = () => c.findOneAndUpdate({ _id: dealId }, [{ $set: {
       status: { $cond: [final, "$status", s.status] },
       verdict: { $cond: [final, "$verdict", { $literal: s.verdict }] },
       passportPath: { $cond: [final, "$passportPath", s.passportPath ?? null] },
@@ -93,19 +102,25 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
       label: { $cond: [final, "$label", { $literal: s.status === "CAPTURED" ? (s.label ?? null) : null }] },
       updatedAt: at,
       events: { $concatArrays: ["$events", [{ $literal: { at, status: s.status, note } }]] },
-    } }]);
+    } }], { returnDocument: "after", projection: { status: 1 } });
     // the hold's record is written in the background too: if this settlement arrives first, wait for it briefly
-    let r = await update();
-    for (let i = 0; i < 3 && r.matchedCount === 0; i++) {
+    let d = await update();
+    for (let i = 0; i < 3 && !d; i++) {
       await new Promise((ok) => setTimeout(ok, 1500));
-      r = await update();
+      d = await update();
     }
-    if (r.matchedCount === 0) {
+    if (!d) {
       console.warn(`[deals] recordSettlement: no record for ${dealId} (its hold was not recorded)`);
-      return false;
+      return null;
     }
-    return true;
+    return d.status;
   });
+}
+
+/** Same write; true when the deal record exists (its status may have been kept, see recordSettlementStatus). */
+export async function recordSettlement(dealId: string, s: Settlement) {
+  const st = await recordSettlementStatus(dealId, s);
+  return st !== null;
 }
 
 /** Records a Visa Direct payout on a captured deal's timeline. NOT_CONFIGURED is never recorded (nothing claims
