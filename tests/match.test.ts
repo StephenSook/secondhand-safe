@@ -133,12 +133,24 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
       expect(checkLabel({ upc }).recall?.recallNumber).toBe("26530");
     }
   });
-  it("a full scanned code matches a recall that printed the UPC without its check digit (CPSC 12017, 06626491474)", () => {
-    expect(checkLabel({ upc: "066264914743" }).kind).toBe("RECALL_MATCH");
-    expect(checkLabel({ upc: "066264914743" }).recall?.recallNumber).toBe("12017");
+  it("an 11-digit recall UPC never moves money: either reading of it keeps the hold (recall 11220, 80640907402)", () => {
+    // 080640907402 (zero missing in front) and 806409074020 (check digit missing) are two different valid UPC-As
+    for (const upc of ["080640907402", "806409074020"]) {
+      const v = checkLabel({ upc });
+      expect(v.kind, upc).toBe("NEEDS_CHECK");
+      expect(v.recall?.recallNumber).toBe("11220");
+      expect(v.reason).toMatch(/printed without one digit/);
+    }
+    expect(checkLabel({ upc: "066264914743" }).kind).toBe("NEEDS_CHECK"); // CPSC 12017 lists 06626491474
   });
-  it("a code whose check digit is wrong does not borrow that rule (066264914740 is not a barcode)", () => {
-    expect(checkLabel({ upc: "066264914740" }).kind).toBe("NO_MATCH");
+  it("REGRESSION: a UPC with a wrong check digit is never an identifier (066264914740, a corrupted 066264914743)", () => {
+    const alone = checkLabel({ upc: "066264914740" });
+    expect(alone.kind).toBe("UNREADABLE");
+    expect(alone.reason).toMatch(/not a valid barcode/);
+    const withModel = checkLabel({ upc: "066264914740", model: "ZZT9Q41X" });
+    expect(withModel.kind).toBe("NO_MATCH"); // decided on the model, and it says the UPC was not used
+    expect(withModel.reason).toMatch(/UPC 066264914740 is not a valid barcode/);
+    expect(checkLabel({ upc: "066264914740", model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH");
   });
   it("a clean UPC with no recall is NO_MATCH (the e2e capture UPC)", () => {
     expect(checkLabel({ upc: "012345678905" }).kind).toBe("NO_MATCH");

@@ -26,8 +26,9 @@ export const isJunkId = (v: string) => JUNK.test(v.trim());
 type Entry = { recall: RecallDoc; value: string };
 const byModel = new Map<string, Entry[]>();
 const byUpc = new Map<string, Entry[]>();
-/** 11-digit recall UPCs: a UPC-A printed without its check digit. */
-const byUpcNoCheck = new Map<string, Entry[]>();
+/** Recall UPCs printed with 11 digits. Either a UPC-A missing its leading zero or one missing its check digit, and
+ *  the notice does not say which, so a match on one never moves money: it keeps the hold for a person to read. */
+const byUpc11 = new Map<string, Entry[]>();
 /** One key per product whatever the zero padding: a UPC-A, its EAN-13 ("0" + UPC-A) and its GTIN-14 are the same
  *  GTIN, and a scanner may send any of them. Leading zeros never change a GTIN check digit. */
 const upcKey = (digits: string) => digits.replace(/^0+/, "");
@@ -40,13 +41,13 @@ for (const r of RECALLS) {
     } else if (id.kind === "upc") {
       const k = id.value.replace(/\D/g, "");
       if (k.length < 11) continue;
-      byUpc.set(upcKey(k), [...(byUpc.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
-      if (k.length === 11) byUpcNoCheck.set(upcKey(k), [...(byUpcNoCheck.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
+      const m = k.length === 11 ? byUpc11 : byUpc;
+      m.set(upcKey(k), [...(m.get(upcKey(k)) ?? []), { recall: r, value: id.value }]);
     }
   }
 }
 
-export const INDEX_SIZE = { recalls: RECALLS.length, models: byModel.size, upcs: byUpc.size };
+export const INDEX_SIZE = { recalls: RECALLS.length, models: byModel.size, upcs: byUpc.size + byUpc11.size };
 
 export interface LabelInput {
   model?: string;
@@ -115,9 +116,15 @@ const pick = (entries: Entry[]) => [...entries].sort((a, b) => b.recall.recallDa
 function recallLookup(input: LabelInput): Verdict | undefined {
   if (input.upc) {
     const d = input.upc.replace(/\D/g, "");
-    // a full barcode (valid check digit) also matches a recall that printed it without the check digit
-    const hit = byUpc.get(upcKey(d)) ?? (d.length >= 12 && gtinValid(d) ? byUpcNoCheck.get(upcKey(d.slice(0, -1))) : undefined);
+    const hit = byUpc.get(upcKey(d));
     if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
+    // an 11-digit recall UPC, read either way (zero missing in front, or check digit missing at the end)
+    const short = byUpc11.get(upcKey(d)) ?? byUpc11.get(upcKey(d.slice(0, -1)));
+    if (short) {
+      const e = pick(short);
+      return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "upc", value: input.upc, recallValue: e.value }, asOf: INDEX_AS_OF,
+        reason: `UPC ${d} may be the one ${e.recall.source} recall ${e.recall.recallNumber} lists as ${e.value}, which is printed without one digit, so it cannot be matched for certain. Read the model number on the label before any money moves.` };
+    }
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
@@ -161,9 +168,25 @@ function classVerdict(c: ProductClass | undefined, text: string): Verdict | unde
   return undefined;
 }
 
+/**
+ * A UPC is an identifier only when its GTIN check digit is valid. A corrupted barcode (a misread, a typo) would
+ * otherwise match no recall and read as NO_MATCH, which captures. So an invalid UPC is dropped: with nothing else
+ * to go on the label is UNREADABLE (the hold stays), and with a model number the check runs on that and says so.
+ */
+export function checkLabel(input: LabelInput): Verdict {
+  const upc = input.upc?.replace(/\D/g, "") ?? "";
+  if (!input.upc?.trim() || gtinValid(upc)) return checkValidLabel(input);
+  const why = `UPC ${upc || input.upc?.trim()} is not a valid barcode (its check digit is wrong), so it was not used.`;
+  if (!input.model?.trim()) {
+    return { kind: "UNREADABLE", asOf: INDEX_AS_OF, reason: `${why} Scan it again, or type the model number from the label.` };
+  }
+  const v = checkValidLabel({ ...input, upc: undefined });
+  return { ...v, reason: `${v.reason} ${why}` };
+}
+
 /** Order: a confirmed recall match, then a banned type (so an uncertain recall hit never hides a ban), then an
  *  uncertain recall hit, then the classifier's own checks. */
-export function checkLabel(input: LabelInput): Verdict {
+function checkValidLabel(input: LabelInput): Verdict {
   const text = (input.text ?? "").toLowerCase();
   const recalled = recallLookup(input);
   if (recalled?.kind === "RECALL_MATCH") return recalled;
