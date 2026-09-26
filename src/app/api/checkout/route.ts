@@ -30,10 +30,10 @@ export async function POST(request: Request) {
     try {
       v = await verifyAgentRequest("POST", request.url, raw, request.headers);
     } catch (e) {
-      if (e instanceof MissingEnvError) return Response.json({ error: "Agent requests are not accepted on this deployment (no TAP key)." }, { status: 503 });
+      if (e instanceof MissingEnvError) return Response.json({ placed: false, error: "Agent requests are not accepted on this deployment (no TAP key)." }, { status: 503 });
       throw e;
     }
-    if (!v.ok) return Response.json({ error: `Trusted Agent Protocol check failed: ${v.reason}. No payment was attempted.`, tap: v }, { status: 401 });
+    if (!v.ok) return Response.json({ placed: false, error: `Trusted Agent Protocol check failed: ${v.reason}. No payment was attempted.`, tap: v }, { status: 401 });
     agent = { keyid: v.keyid };
   }
   let b: { listing?: unknown; amountUsd?: unknown; transientTokenJwt?: unknown; saveCard?: unknown; savedCard?: unknown } | null = null;
@@ -41,22 +41,22 @@ export async function POST(request: Request) {
   const listing = typeof b?.listing === "string" ? b.listing.trim().slice(0, 80) : "";
   const amountUsd = typeof b?.amountUsd === "number" ? Math.round(b.amountUsd * 100) / 100 : NaN;
   if (!listing || !(amountUsd >= 1 && amountUsd <= 2000)) {
-    return Response.json({ error: "listing (text) and amountUsd (1 to 2000) are required" }, { status: 400 });
+    return Response.json({ placed: false, error: "listing (text) and amountUsd (1 to 2000) are required" }, { status: 400 });
   }
   if (b?.transientTokenJwt !== undefined && !isTransientToken(b.transientTokenJwt)) {
-    return Response.json({ error: "transientTokenJwt is not a Microform token" }, { status: 400 });
+    return Response.json({ placed: false, error: "transientTokenJwt is not a Microform token" }, { status: 400 });
   }
   const tt = isTransientToken(b?.transientTokenJwt) ? b.transientTokenJwt : undefined;
   let creds;
   try {
     creds = visaCreds();
   } catch (e) {
-    if (e instanceof MissingEnvError) return Response.json({ error: "Visa sandbox keys are not configured on this deployment." }, { status: 503 });
+    if (e instanceof MissingEnvError) return Response.json({ placed: false, error: "Visa sandbox keys are not configured on this deployment." }, { status: 503 });
     throw e;
   }
   // a saved card (Visa Token Management Service) is only honored with our signature on it
   const saved = b?.savedCard !== undefined ? verifySavedCard(creds.secret, b.savedCard) : null;
-  if (b?.savedCard !== undefined && !saved) return Response.json({ error: "That saved card is not valid here; enter the card again." }, { status: 400 });
+  if (b?.savedCard !== undefined && !saved) return Response.json({ placed: false, error: "That saved card is not valid here; enter the card again." }, { status: 400 });
   const saveCard = b?.saveCard === true && !!tt && !saved;
   const source = saved ? { customerId: saved.customerId } : tt ? { transientTokenJwt: tt } : { card: SANDBOX_TEST_CARD };
   const cardKind = saved ? "saved-card" : tt ? "microform" : "sandbox-test-card";
@@ -70,14 +70,18 @@ export async function POST(request: Request) {
       ? "Visa did not confirm. A hold MAY have been placed; it will lapse on its own if nobody captures it. Do not retry right away."
       : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
     // `uncertain` tells the client a hold may exist, so it must not offer a second hold for this purchase
-    return Response.json({ error, uncertain: unsure, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
+    return Response.json({ error, uncertain: unsure, ...(unsure ? {} : { placed: false }), visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
   }
   // the hold is what Visa authorized: less than asked when a card-linked promotion applied. More than asked is
   // never accepted: release it and refuse, rather than hold an amount the buyer did not agree to.
   if (auth.authorizedUsd && auth.authorizedUsd > amountUsd + 0.004) {
     const rel = await reverse(creds, auth.id, { dealId, amountUsd: auth.authorizedUsd, reason: "authorized more than the agreed price" });
     console.warn(`[checkout] Visa authorized ${auth.authorizedUsd} for an agreed ${amountUsd}; reversal ${rel.status}`);
-    return Response.json({ error: `Visa authorized more than the agreed price; the hold was released (${rel.status}). Nothing was charged.` }, { status: 502 });
+    // claim a release only when Visa confirmed it; otherwise a hold MAY remain and the client must not allow another
+    return Response.json(rel.ok
+      ? { placed: false, error: "Visa authorized more than the agreed price; the hold was released. Nothing was charged." }
+      : { uncertain: true, error: `Visa authorized more than the agreed price and did not confirm the release (${rel.status}). A hold MAY remain; it lapses on its own if nobody captures it.` },
+      { status: 502 });
   }
   const heldUsd = auth.authorizedUsd && auth.authorizedUsd > 0 ? Math.round(auth.authorizedUsd * 100) / 100 : amountUsd;
   waitUntil(recordHold({ dealId, listing, amountUsd: heldUsd, card: cardKind, agent: agent?.keyid ?? null, authId: auth.id }));

@@ -19,33 +19,33 @@ import { DEMO_TABLE } from "@/core/demoTable";
 const AGENT_MAX_USD = 200;
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (!underLimit(`agent:${ip}`, 20)) return Response.json({ error: "Too many agent checkouts; wait a minute." }, { status: 429 });
+  if (!underLimit(`agent:${ip}`, 20)) return Response.json({ placed: false, error: "Too many agent checkouts; wait a minute." }, { status: 429 });
   const b = (await request.json().catch(() => null)) as { listingId?: string; listing?: string; amountUsd?: number; tamper?: boolean } | null;
   let listing: string = DEMO_TABLE[0].label;
   let amountUsd: number = DEMO_TABLE[0].amountUsd;
   if (typeof b?.listingId !== "string" && (b?.listing !== undefined || b?.amountUsd !== undefined)) {
     // free text is only for the items on our demo table; anything else must be a pre-screened catalog listing
     const item = DEMO_TABLE.find((d) => d.label === b?.listing && d.amountUsd === b?.amountUsd);
-    if (!item) return Response.json({ error: "The agent only buys a catalog listing (listingId) or an item on our demo table." }, { status: 400 });
+    if (!item) return Response.json({ placed: false, error: "The agent only buys a catalog listing (listingId) or an item on our demo table." }, { status: 400 });
     listing = item.label;
     amountUsd = item.amountUsd;
   }
   if (typeof b?.listingId === "string") {
     const l = byId.get(b.listingId);
-    if (!l) return Response.json({ error: "Unknown listing." }, { status: 404 });
+    if (!l) return Response.json({ placed: false, error: "Unknown listing." }, { status: 404 });
     const screen = prescreen(l);
-    if (screen.tone === "red") return Response.json({ error: `The agent will not buy this: ${screen.headline}. ${screen.reason}`, screen }, { status: 403 });
+    if (screen.tone === "red") return Response.json({ placed: false, error: `The agent will not buy this: ${screen.headline}. ${screen.reason}`, screen }, { status: 403 });
     listing = l.title.slice(0, 80);
     amountUsd = l.priceUsd ?? 0;
   }
   if (!(amountUsd >= 1 && amountUsd <= AGENT_MAX_USD)) {
-    return Response.json({ error: `Agent purchases are limited to $1 to $${AGENT_MAX_USD}.` }, { status: 400 });
+    return Response.json({ placed: false, error: `Agent purchases are limited to $1 to $${AGENT_MAX_USD}.` }, { status: 400 });
   }
   let key;
   try {
     key = agentKey();
   } catch (e) {
-    if (e instanceof MissingEnvError) return Response.json({ error: "The agent's TAP signing key is not configured on this deployment." }, { status: 503 });
+    if (e instanceof MissingEnvError) return Response.json({ placed: false, error: "The agent's TAP signing key is not configured on this deployment." }, { status: 503 });
     throw e;
   }
   const origin = new URL(request.url).origin;

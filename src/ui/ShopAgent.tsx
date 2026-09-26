@@ -172,15 +172,22 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
     const existing = openHold();
     if (existing) { setHeld(existing); setFailed({ id: l.id, text: existing.text }); return; }
     setBuying(l.id); setFailed(null);
-    try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ listingId: l.id, listing: l.title.slice(0, 80), amountUsd: l.priceUsd ?? 0 })); } catch {}
-    let clearNo = false; // true only when Visa (or our server, before Visa) clearly placed no hold
+    // Fail closed: without a saved pending marker, a lost answer could let a second hold through.
+    try {
+      sessionStorage.setItem(PENDING_KEY, JSON.stringify({ listingId: l.id, listing: l.title.slice(0, 80), amountUsd: l.priceUsd ?? 0 }));
+    } catch {
+      setBuying("");
+      setFailed({ id: l.id, text: "This browser is blocking site storage, so we cannot guarantee one hold at a time. Nothing was held. Allow site data for this page, or use the pickup page." });
+      return;
+    }
+    let clearNo = false; // true only when the server said explicitly that no hold was placed
     try {
       const resp = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ listingId: l.id }) });
       const j = await resp.json().catch(() => ({}));
       const m = j.merchant ?? {};
       if (!resp.ok || m.status !== "HELD") {
-        clearNo = m.uncertain !== true && typeof (m.error ?? j.error) === "string";
+        clearNo = m.placed === false || (!j.merchant && j.placed === false);
         throw new Error(m.error ?? j.error ?? `HTTP ${resp.status}`);
       }
       let handoff = true;
