@@ -3,7 +3,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 /**
  * Deal token: binds dealId + Visa authorization id + amount at checkout, so /api/pickup can only settle the
  * hold it was issued for, for exactly that amount. Keyed from DEAL_TOKEN_SECRET when set (so rotating the Visa
- * key does not orphan open holds), otherwise derived from the Visa secret. Never sent to the client.
+ * key does not orphan open holds), otherwise derived from the Visa secret. The signing key never leaves the
+ * server; the token itself goes to the buyer's browser, which cannot alter it without breaking the HMAC.
  */
 export interface DealClaims { dealId: string; authId: string; amountUsd: number; iat: number }
 

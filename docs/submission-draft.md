@@ -16,7 +16,10 @@ first 65 Facebook Marketplace listings it reviewed were banned infant in-bed sle
 counting. Marketplaces filter what they can read in a listing. Nobody reads the label on the actual item
 when the money changes hands in a parking lot.
 
-TODO (Stephen): one or two sentences on why this one matters to you.
+Stephen spent more than four years working with kids ages one to five in child care and camp programs, and
+saw parents deal with recalled baby gear and the cost of buying it new. Parents would show up with a
+secondhand stroller they got off Marketplace, and there was no easy way for them to know if it had been
+recalled. (Stephen: edit this into your own words before submitting.)
 
 ## What it does
 
@@ -77,8 +80,7 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 - **The Atlanta scan:** we harvested 1662 real listings (Craigslist Atlanta and eBay) and ran them all through
   the model, then read every flag ourselves. Round 1 raised 39 flags. We added the false alarms (crib skirts,
   rail covers, dollhouse cribs) to training, without touching the test set, and round 2 raised 9.
-- **ElevenLabs:** the verdict is spoken at the curb in English or Spanish. TODO: live only after the key is
-  pushed to production.
+- **ElevenLabs:** the verdict is spoken at the curb in English or Spanish (live in production).
 - **Frontend:** Next.js 16, GSAP and Lenis motion, MapLibre with OpenFreeMap for the scan map.
 - **Engineering:** CI runs lint, types, unit tests, a build, pytest, a JS-vs-Python classifier parity suite,
   Playwright end to end (including both real Visa paths when keys are present), a secret scan and an em-dash
@@ -143,8 +145,8 @@ DRAFT (written from what actually happened this weekend; Stephen and Tylin, rewr
 
 ## Built with
 
-TODO: tick only what is live on submission day. Live now: nextjs, typescript, visa-acceptance (sandbox),
-visa-microform, trusted-agent-protocol, mcp, transformers.js, clip, scikit-learn, python, cpsc-api, nhtsa,
-maplibre, vercel, playwright, github-actions, gemini (the recall pass is in the shipped index; the live label
-reader needs a production key). Add elevenlabs once the production key is set. Add mongodb and solana only
-if they are wired by then.
+Live in production as of this draft (re-check `/api/health` before submitting): nextjs, typescript,
+visa-acceptance (sandbox), visa-microform, visa-token-management-service, trusted-agent-protocol, mcp,
+transformers.js, clip, scikit-learn, python, cpsc-api, nhtsa, gemini (vertex ai, keyless), elevenlabs,
+mongodb-atlas, solana (devnet), maplibre, vercel, playwright, github-actions, expo, react-native, eas,
+notability.
