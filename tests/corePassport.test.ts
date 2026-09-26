@@ -16,7 +16,7 @@ import { b58encode, recordHash } from "@/server/solana/memo";
 import { passportMeta } from "@/server/solana/meta";
 import { GET as metaRoute } from "@/app/api/passport-meta/[id]/route";
 import { boardDeal, pub, type DealRecord } from "@/server/deals/store";
-import { mintPassport, reconcileMints, dailyCap, MAX_LINK_ATTEMPTS, MINT_COST_LAMPORTS, RECONCILE_PER_RUN, type MintClaim, type MintStore } from "@/server/solana/mints";
+import { mintPassport, reconcileMints, settleViewedMint, dailyCap, MAX_LINK_ATTEMPTS, VIEW_RECHECK_MS, MINT_COST_LAMPORTS, RECONCILE_PER_RUN, type MintClaim, type MintStore } from "@/server/solana/mints";
 
 /** a throwaway ed25519 keypair built at runtime, in the 64-byte Solana layout */
 function freshKeypairB58() {
@@ -70,6 +70,7 @@ type FakeOpts = {
   /** simulates a worker that dies here: the promise never settles */
   hangOnState?: string;
 };
+const isOpen = (d: MintClaim) => d.admitted && (d.state === "pending" || d.state === "uncertain" || (d.state === "minted" && !d.linked));
 function fakeStore(o: FakeOpts = {}) {
   const docs = new Map<string, MintClaim>();
   const counts = new Map<string, number>();
@@ -98,8 +99,15 @@ function fakeStore(o: FakeOpts = {}) {
     },
     get: async (id) => docs.get(id) ?? "none",
     open: async (limit, nowIso) => [...docs.values()]
-      .filter((d) => d.admitted && d.nextAttemptAt <= nowIso && (d.state === "pending" || d.state === "uncertain" || (d.state === "minted" && !d.linked)))
+      .filter((d) => isOpen(d) && d.nextAttemptAt <= nowIso)
       .sort((a, b) => a.nextAttemptAt.localeCompare(b.nextAttemptAt)).slice(0, limit),
+    takeDue: async (id, nowIso, holdUntilIso) => {
+      await Promise.resolve();
+      const d = docs.get(id);
+      if (!d || !isOpen(d) || d.nextAttemptAt > nowIso) return null;
+      docs.set(id, { ...d, nextAttemptAt: holdUntilIso });
+      return { ...d };
+    },
     link: async (id, addr) => {
       linkCalls.push(id);
       const r = o.link ? o.link(id) : true;
@@ -326,6 +334,55 @@ describe("minting the asset (cap admission, one claim per deal, one address, one
     expect(r.results.map((x) => x.result)).toEqual(["deferred", "deferred"]);
     expect(read).not.toHaveBeenCalled();
     expect(linkCalls).toEqual([]);
+  });
+});
+
+describe("a passport page view settles its own claim (the cron is daily)", () => {
+  it("a past-window uncertain claim resolves on view: found = minted and linked, absent = not_minted; never a send", async () => {
+    const f = fakeStore();
+    f.docs.set("shs-44444444-0001", claimDoc("shs-44444444-0001", { state: "uncertain" }));
+    f.docs.set("shs-44444444-0002", claimDoc("shs-44444444-0002", { state: "uncertain" }));
+    const read = vi.fn(async (a: string) => (a === "Addr-shs-44444444-0001" ? { address: a } : null));
+    expect(await settleViewedMint("shs-44444444-0001", { store: f.store, read, now: at(0) })).toBe("found on chain, linked");
+    expect(await settleViewedMint("shs-44444444-0002", { store: f.store, read, now: at(0) })).toBe("not minted");
+    expect(f.docs.get("shs-44444444-0001")).toMatchObject({ state: "minted", linked: true });
+    expect(f.docs.get("shs-44444444-0002")?.state).toBe("not_minted");
+    expect(read.mock.calls.map((c) => c[0])).toEqual(["Addr-shs-44444444-0001", "Addr-shs-44444444-0002"]);
+    expect(core.create).not.toHaveBeenCalled();
+  });
+  it("inside the settle window a view does nothing: no devnet read, the claim stays for later", async () => {
+    const { store, docs } = fakeStore();
+    vi.mocked(core.create).mockReturnValue({ sendAndConfirm: vi.fn().mockRejectedValue(new Error("timeout")) } as never);
+    await mintPassport(FIELDS, "https://example.test", store, umiWithBalance(RICH), at(0));
+    const read = vi.fn(async () => null);
+    expect(await settleViewedMint(FIELDS.dealId, { store, read, now: at(4 * MIN) })).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(docs.get(FIELDS.dealId)?.state).toBe("uncertain");
+    expect(await settleViewedMint(FIELDS.dealId, { store, read, now: at(5 * MIN) })).toBe("not minted");
+    expect(core.create).toHaveBeenCalledTimes(1); // only the pickup's own send, ever
+  });
+  it("rate limit: page refreshes and concurrent viewers read devnet at most once per VIEW_RECHECK_MS", async () => {
+    const f = fakeStore();
+    f.docs.set("shs-55555555-0001", claimDoc("shs-55555555-0001", { state: "uncertain" }));
+    // devnet unreadable, so the claim stays open and every view would read again if it could
+    const read = vi.fn(async () => { throw new Error("rpc down"); });
+    const views = await Promise.all(Array.from({ length: 10 }, () => settleViewedMint("shs-55555555-0001", { store: f.store, read, now: at(0) })));
+    expect(views.filter((v) => v !== null)).toHaveLength(1);
+    for (const ms of [3_000, 6_000, VIEW_RECHECK_MS - 1]) await settleViewedMint("shs-55555555-0001", { store: f.store, read, now: at(ms) });
+    expect(read).toHaveBeenCalledTimes(1);
+    f.docs.set("shs-55555555-0001", { ...f.docs.get("shs-55555555-0001")!, nextAttemptAt: new Date(T0 + VIEW_RECHECK_MS).toISOString() });
+    await settleViewedMint("shs-55555555-0001", { store: f.store, read, now: at(VIEW_RECHECK_MS) });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("with PASSPORT_DAILY_CAP=0, or for a claim already settled, a view does nothing", async () => {
+    const f = fakeStore();
+    f.docs.set("shs-66666666-0001", claimDoc("shs-66666666-0001", { state: "uncertain" }));
+    f.docs.set("shs-66666666-0002", claimDoc("shs-66666666-0002", { state: "not_minted" }));
+    const read = vi.fn(async (a: string) => ({ address: a }));
+    expect(await settleViewedMint("shs-66666666-0001", { store: f.store, read, now: at(0), cap: 0 })).toBeNull();
+    expect(await settleViewedMint("shs-66666666-0002", { store: f.store, read, now: at(0) })).toBeNull();
+    expect(await settleViewedMint("shs-66666666-9999", { store: f.store, read, now: at(0) })).toBeNull();
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

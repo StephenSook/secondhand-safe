@@ -7,7 +7,7 @@ import { readPassport, recordHash, judgePassport, passportSigner } from "@/serve
 import { explorerAddress, judgeAsset, readPassportAsset, type PassportAssetView } from "@/server/solana/core";
 import { DEAL_ID_RE } from "@/server/solana/meta";
 import { getDeal } from "@/server/deals/store";
-import { atlasMintStore, MINT_IN_FLIGHT, type MintClaim } from "@/server/solana/mints";
+import { atlasMintStore, settleViewedMint, MINT_IN_FLIGHT, type MintClaim } from "@/server/solana/mints";
 
 export const metadata: Metadata = { title: `Item passport: ${BRAND}` };
 /** how long after the memo a sale with no mint claim yet still counts as "being minted" */
@@ -48,6 +48,8 @@ export default async function PassportPage({ params, searchParams }: { params: P
   // before the asset is linked to the deal: the mint claim says whether it is still settling or ended without one
   let mint: MintClaim | "none" | null = "none";
   if (dealId && j?.verified) {
+    // the cron is daily: a claim past its settle window is settled here, rate-limited, never sent again
+    await settleViewedMint(dealId);
     const d = await getDeal(dealId);
     assetAddr = d.state === "ok" ? d.deal.passportAsset ?? null : null;
     dealRecall = d.state === "ok" ? d.deal.postSaleRecall?.recallNumber ?? null : null;

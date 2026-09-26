@@ -41,7 +41,7 @@ it.skipIf(!chainOn)("mints a clearly labelled test passport on devnet, reads it,
 }, 120_000);
 
 /** Real Atlas, throwaway database, no chain: concurrent claims for one deal, exactly one wins; the cap counter is atomic. */
-it.skipIf(!process.env.MONGODB_URI)("Atlas: 20 concurrent admissions against a cap of 7 admit exactly 7; one claim per deal wins", async () => {
+it.skipIf(!process.env.MONGODB_URI)("Atlas: 20 concurrent admissions against a cap of 7 admit exactly 7; one claim per deal wins; one view takes a due claim", async () => {
   process.env.MONGODB_DB = `lullabuy_test_${Date.now()}`;
   const store = atlasMintStore();
   const at = new Date(Date.now() - 3_600_000).toISOString();
@@ -60,6 +60,12 @@ it.skipIf(!process.env.MONGODB_URI)("Atlas: 20 concurrent admissions against a c
     expect(await store.open(25, new Date().toISOString())).toHaveLength(1);
     expect(await store.get("shs-00000000-c1a1")).toMatchObject({ state: "pending", address: `Addr${rs.indexOf("won")}` });
     expect(await store.get("shs-00000000-ffff")).toBe("none");
+    // the passport-view rate limit: concurrent views of a due claim, exactly one takes it
+    const now = new Date().toISOString(), hold = new Date(Date.now() + 30_000).toISOString();
+    const takes = await Promise.all(Array.from({ length: 10 }, () => store.takeDue("shs-00000000-c1a1", now, hold)));
+    console.log("[live] takeDue:", JSON.stringify(takes.map((t) => (t ? "took" : null))));
+    expect(takes.filter((t) => t !== null)).toHaveLength(1);
+    expect(await store.takeDue("shs-00000000-c1a1", now, hold)).toBeNull();
   } finally {
     await (await getDb())?.dropDatabase();
   }

@@ -10,10 +10,10 @@ vi.mock("@/ui/AutoRefresh", () => ({
 vi.mock("@/server/solana/memo", async (orig) => ({ ...(await orig<typeof import("@/server/solana/memo")>()), readPassport: vi.fn(), passportSigner: () => "SIGNER" }));
 vi.mock("@/server/solana/core", async (orig) => ({ ...(await orig<typeof import("@/server/solana/core")>()), readPassportAsset: vi.fn() }));
 vi.mock("@/server/deals/store", async (orig) => ({ ...(await orig<typeof import("@/server/deals/store")>()), getDeal: vi.fn() }));
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock("@/server/solana/mints", async (orig) => ({ ...(await orig<typeof import("@/server/solana/mints")>()), atlasMintStore: () => ({ get }) }));
+const { get, settle } = vi.hoisted(() => ({ get: vi.fn(), settle: vi.fn() }));
+vi.mock("@/server/solana/mints", async (orig) => ({ ...(await orig<typeof import("@/server/solana/mints")>()), atlasMintStore: () => ({ get }), settleViewedMint: settle }));
 
-import { readPassport, recordHash, passportMemo } from "@/server/solana/memo";
+import { readPassport, recordHash, passportMemo, passportRecord } from "@/server/solana/memo";
 import { readPassportAsset, passportAttributes, attributesToRecord } from "@/server/solana/core";
 import { getDeal } from "@/server/deals/store";
 import PassportPage from "@/app/passport/[sig]/page";
@@ -23,16 +23,35 @@ const RECORD = JSON.stringify({ v: 1, dealId: DEAL });
 const SIG = "5".repeat(88);
 const ASSET = "A".repeat(43);
 
-async function render(memoAgeS = 10) {
-  vi.mocked(readPassport).mockResolvedValue({ memo: passportMemo(DEAL, recordHash(RECORD)), ok: true, signer: "SIGNER", slot: 1,
+async function render(memoAgeS = 10, record = RECORD) {
+  vi.mocked(readPassport).mockResolvedValue({ memo: passportMemo(DEAL, recordHash(record)), ok: true, signer: "SIGNER", slot: 1,
     blockTime: Math.floor(Date.now() / 1000) - memoAgeS } as never);
-  const el = await PassportPage({ params: Promise.resolve({ sig: SIG }), searchParams: Promise.resolve({ r: Buffer.from(RECORD).toString("base64url") }) });
+  const el = await PassportPage({ params: Promise.resolve({ sig: SIG }), searchParams: Promise.resolve({ r: Buffer.from(record).toString("base64url") }) });
   const html = renderToString(el);
   return { html, core: html.match(/data-core="([a-z_]+)"/)?.[1] ?? null, refresh: html.match(/data-refresh="([^"]+)"/)?.[1] ?? null };
 }
 const deal = (passportAsset: string | null) => vi.mocked(getDeal).mockResolvedValue({ state: "ok", deal: { dealId: DEAL, passportAsset } } as never);
 
-beforeEach(() => { vi.mocked(readPassportAsset).mockReset(); get.mockReset(); });
+beforeEach(() => { vi.mocked(readPassportAsset).mockReset(); get.mockReset(); settle.mockReset().mockResolvedValue(null); });
+
+describe("/passport/[sig]: memo verification", () => {
+  it("an old record (with the Visa capture id it used to carry) and a new one (without) both verify", async () => {
+    deal(null);
+    get.mockResolvedValue({ state: "not_minted" });
+    const old = JSON.stringify({ v: 1, dealId: DEAL, amountUsd: 40, verdict: "NO_MATCH", reason: "r", indexAsOf: "2026-09-20",
+      label: { model: "M1", batch: null, date: null, upc: null }, visaCapture: "7300000000000000000001", at: "2026-09-25T10:00:00.000Z" });
+    const fresh = passportRecord({ dealId: DEAL, amountUsd: 40, verdict: "NO_MATCH", reason: "r", indexAsOf: "2026-09-20",
+      label: { model: "M1", batch: null, date: null, upc: null }, at: "2026-09-26T10:00:00.000Z" });
+    for (const rec of [old, fresh]) expect((await render(10, rec)).html).toContain("✓ Verified");
+    expect(fresh).not.toContain("visa");
+  });
+  it("a verified view settles that one deal's claim (rate-limited inside settleViewedMint)", async () => {
+    deal(null);
+    get.mockResolvedValue({ state: "uncertain" });
+    await render();
+    expect(settle).toHaveBeenCalledWith(DEAL);
+  });
+});
 
 describe("/passport/[sig]: the Core passport while it is being minted", () => {
   it("memo verified, asset not linked yet, claim pending: shows 'being minted' and keeps a bounded 3 s refresh (90 s)", async () => {

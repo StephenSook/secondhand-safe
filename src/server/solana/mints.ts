@@ -1,7 +1,7 @@
 import type { Umi } from "@metaplex-foundation/umi";
 import { getDb } from "@/server/db/mongo";
 import { recordPassportAsset } from "@/server/deals/store";
-import { balanceRefusal, newAssetSigner, readPassportAsset, sendCreate, umiFromEnv, type PassportFields } from "./core";
+import { balanceRefusal, deadline, newAssetSigner, readPassportAsset, sendCreate, umiFromEnv, type PassportFields } from "./core";
 
 /**
  * Minting the Metaplex Core passport (PLAN 6.4). The Memo passport is already written for every captured sale; the Core
@@ -11,7 +11,7 @@ import { balanceRefusal, newAssetSigner, readPassportAsset, sendCreate, umiFromE
  *    unreadable counter refuses (fail closed). Only an admitted request inserts the per-deal claim (_id = dealId, so
  *    concurrent pickups race on Atlas's unique _id and exactly one wins). PASSPORT_DAILY_CAP=0 switches minting off.
  * 2. One attempt, one address, ever: the asset address is stored as pending before the single send. A timeout is
- *    "uncertain"; the cron only looks up that stored address: found = minted and linked, absent after SETTLE_AFTER_MS
+ *    "uncertain"; the cron (and a view of that sale's passport page) only looks up that stored address: found = minted and linked, absent after SETTLE_AFTER_MS
  *    (far past blockhash expiry) = terminal not_minted. It never sends.
  * 3. The balance floor is a best-effort pre-check (floor + one mint). Concurrent mints for different deals can dip the
  *    wallet slightly below the floor; that is accepted on devnet, where SOL has no value.
@@ -45,6 +45,9 @@ export interface MintStore {
   get(dealId: string): Promise<MintClaim | "none" | null>;
   /** admitted claims due for work (nextAttemptAt <= now), soonest first: pending, uncertain, or minted but not linked */
   open(limit: number, nowIso: string): Promise<MintClaim[] | null>;
+  /** takes one deal's claim if it is admitted, open and due (nextAttemptAt <= now), moving nextAttemptAt to `holdUntil`
+   *  in the same conditional update; null = not due, not open, or unreadable */
+  takeDue(dealId: string, nowIso: string, holdUntilIso: string): Promise<MintClaim | null>;
   /** links the asset address to the deal record; true when the deal now points at it */
   link(dealId: string, address: string): Promise<boolean | null>;
 }
@@ -62,10 +65,14 @@ export const MAX_LINK_ATTEMPTS = 5;
 export const MINT_COST_LAMPORTS = 6_000_000n;
 /** at most this many claims handled per reconcile run, whatever their branch */
 export const RECONCILE_PER_RUN = 5;
+/** a viewed passport looks at devnet for its claim at most this often */
+export const VIEW_RECHECK_MS = 30_000;
 /** claims that are still settling; the passport page keeps refreshing while it sees one */
 export const MINT_IN_FLIGHT: readonly MintState[] = ["pending", "uncertain", "minted"];
 
 const iso = (ms: number) => new Date(ms).toISOString();
+/** admitted claims that still need work: pending, uncertain, or minted but not linked */
+const OPEN = { admitted: true as const, $or: [{ state: { $in: ["pending", "uncertain"] as MintState[] } }, { state: "minted" as const, linked: false }] };
 
 export function atlasMintStore(): MintStore {
   const col = async () => { const db = await getDb().catch(() => null); return db ? db.collection<MintClaim>("passport_mints") : null; };
@@ -104,8 +111,14 @@ export function atlasMintStore(): MintStore {
     open: (limit, nowIso) => guard("open", async () => {
       const m = await col();
       if (!m) return null;
-      return m.find({ admitted: true, nextAttemptAt: { $lte: nowIso }, $or: [{ state: { $in: ["pending", "uncertain"] } }, { state: "minted", linked: false }] },
+      return m.find({ ...OPEN, nextAttemptAt: { $lte: nowIso } },
         { sort: { nextAttemptAt: 1 }, limit }).toArray();
+    }),
+    takeDue: (dealId, nowIso, holdUntilIso) => guard("takeDue", async () => {
+      const m = await col();
+      if (!m) return null;
+      return m.findOneAndUpdate({ _id: dealId, ...OPEN, nextAttemptAt: { $lte: nowIso } }, { $set: { nextAttemptAt: holdUntilIso } },
+        { returnDocument: "before", maxTimeMS: 3_000 });
     }),
     link: (dealId, address) => recordPassportAsset(dealId, address),
   };
@@ -161,10 +174,40 @@ export interface ReconcileDeps {
   maxPerRun?: number;
 }
 
-/** Settles due admitted claims without ever sending, bounded by maxPerRun and the time gate on every branch:
- *  - minted but unlinked: retry the deal link with exponential backoff, then link_failed;
- *  - pending/uncertain: read the STORED address; found = minted and linked; absent and recent = wait; absent after
- *    SETTLE_AFTER_MS = not_minted for good. */
+/** One due claim, never a send: minted but unlinked = retry the deal link (backing off, then link_failed);
+ *  pending/uncertain = read the STORED address: found = minted and linked; absent and recent = wait; absent after
+ *  SETTLE_AFTER_MS = not_minted for good. The cron and a passport page view both use this. */
+async function settleClaim(store: MintStore, read: NonNullable<ReconcileDeps["read"]>, now: () => number, c: MintClaim): Promise<string> {
+  const linkOrBackOff = async (prefix: string) => {
+    if (await store.link(c._id, c.address)) { await store.update(c._id, { linked: true }); return `${prefix}linked`; }
+    const n = (c.linkAttempts ?? 0) + 1;
+    if (n >= MAX_LINK_ATTEMPTS) {
+      await store.update(c._id, { state: "link_failed", linkAttempts: n, reason: "the deal record never accepted the asset" });
+      return `${prefix}link failed for good`;
+    }
+    await store.update(c._id, { linkAttempts: n, nextAttemptAt: iso(now() + SETTLE_AFTER_MS * 2 ** n) });
+    return `${prefix}link retry later`;
+  };
+  if (c.state === "minted") return linkOrBackOff("");
+  let found: { address: string } | null;
+  try { found = await read(c.address); } catch {
+    await store.update(c._id, { nextAttemptAt: iso(now() + SETTLE_AFTER_MS) });
+    return "devnet unreadable; later";
+  }
+  if (found) {
+    await store.update(c._id, { state: "minted", reason: null });
+    return linkOrBackOff("found on chain, ");
+  }
+  const settleAt = Date.parse(c.attemptAt) + SETTLE_AFTER_MS;
+  if (now() < settleAt) {
+    await store.update(c._id, { nextAttemptAt: iso(settleAt) });
+    return "not on chain yet";
+  }
+  await store.update(c._id, { state: "not_minted", reason: "the asset never landed; this sale keeps its Memo passport" });
+  return "not minted";
+}
+
+/** Settles due admitted claims, bounded by maxPerRun and the time gate on every branch. */
 export async function reconcileMints(d: ReconcileDeps = {}) {
   const results: { dealId: string; result: string }[] = [];
   if ((d.cap ?? dailyCap()) === 0) return { checked: 0, results, unavailable: false, off: true };
@@ -175,40 +218,24 @@ export async function reconcileMints(d: ReconcileDeps = {}) {
   const claims = await store.open(25, iso(now()));
   if (!claims) return { checked: 0, results, unavailable: true };
   let done = 0;
-  const linkOrBackOff = async (c: MintClaim, prefix: string) => {
-    if (await store.link(c._id, c.address)) { await store.update(c._id, { linked: true }); return `${prefix}linked`; }
-    const n = (c.linkAttempts ?? 0) + 1;
-    if (n >= MAX_LINK_ATTEMPTS) {
-      await store.update(c._id, { state: "link_failed", linkAttempts: n, reason: "the deal record never accepted the asset" });
-      return `${prefix}link failed for good`;
-    }
-    await store.update(c._id, { linkAttempts: n, nextAttemptAt: iso(now() + SETTLE_AFTER_MS * 2 ** n) });
-    return `${prefix}link retry later`;
-  };
   for (const c of claims) {
     if (!c.admitted) continue; // never act on a claim that did not pass the cap
     if (done >= max || (d.canStartChainWork && !d.canStartChainWork())) { results.push({ dealId: c._id, result: "deferred" }); continue; }
     done++;
-    if (c.state === "minted") { results.push({ dealId: c._id, result: await linkOrBackOff(c, "") }); continue; }
-    let found: { address: string } | null;
-    try { found = await read(c.address); } catch {
-      await store.update(c._id, { nextAttemptAt: iso(now() + SETTLE_AFTER_MS) });
-      results.push({ dealId: c._id, result: "devnet unreadable; later" });
-      continue;
-    }
-    if (found) {
-      await store.update(c._id, { state: "minted", reason: null });
-      results.push({ dealId: c._id, result: await linkOrBackOff(c, "found on chain, ") });
-      continue;
-    }
-    const settleAt = Date.parse(c.attemptAt) + SETTLE_AFTER_MS;
-    if (now() < settleAt) {
-      await store.update(c._id, { nextAttemptAt: iso(settleAt) });
-      results.push({ dealId: c._id, result: "not on chain yet" });
-      continue;
-    }
-    await store.update(c._id, { state: "not_minted", reason: "the asset never landed; this sale keeps its Memo passport" });
-    results.push({ dealId: c._id, result: "not minted" });
+    results.push({ dealId: c._id, result: await settleClaim(store, read, now, c) });
   }
   return { checked: claims.length, results, unavailable: false };
+}
+
+/** The cron runs daily, so the passport page settles THE ONE claim being viewed once it is due (past its settle window
+ *  or link backoff): the same one-address lookup, never a send. Taking it pushes nextAttemptAt VIEW_RECHECK_MS ahead in
+ *  one conditional update, so page refreshes and concurrent viewers look at devnet at most once per VIEW_RECHECK_MS. */
+export async function settleViewedMint(dealId: string, d: Omit<ReconcileDeps, "canStartChainWork" | "maxPerRun"> = {}): Promise<string | null> {
+  if ((d.cap ?? dailyCap()) === 0) return null;
+  const store = d.store ?? atlasMintStore();
+  const read = d.read ?? ((a: string) => deadline(readPassportAsset(a), 8_000, "asset read"));
+  const now = d.now ?? (() => Date.now());
+  const c = await store.takeDue(dealId, iso(now()), iso(now() + VIEW_RECHECK_MS));
+  if (!c || !c.admitted) return null;
+  return settleClaim(store, read, now, c);
 }
