@@ -144,3 +144,32 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
     expect(checkLabel({ upc: "012345678905" }).kind).toBe("NO_MATCH");
   });
 });
+
+describe("CPSC API titles that belong to a different recall (data/handcheck.md, 2026-09-26)", () => {
+  it("the Joolz car seat adapters match 26568 by their real identifier NL311", () => {
+    const v = checkLabel({ model: "NL311" });
+    expect(v.kind).toBe("RECALL_MATCH");
+    expect(v.recall?.recallNumber).toBe("26568");
+  });
+
+  it("Aer2 (a stroller the notice says is NOT recalled, from 26568's title) never matches 26569", () => {
+    const v = checkLabel({ model: "Aer2" });
+    expect(v.recall?.recallNumber).not.toBe("26569");
+    expect(v.kind).not.toBe("RECALL_MATCH");
+  });
+
+  it("every CPSC record's title agrees with its own recall page URL", async () => {
+    const recalls: { source: string; recallNumber: string; title: string; url: string }[] =
+      (await import("../data/recalls.json")).default;
+    const words = (s: string) => new Set((s.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []));
+    const bad = recalls.filter((r) => {
+      if (r.source !== "CPSC") return false;
+      const slug = r.url.replace(/\/$/, "").split("/").pop() ?? "";
+      if ((slug.match(/-/g) ?? []).length < 4) return false; // old-style URLs carry no title
+      const s = words(slug.replace(/-/g, " "));
+      return !(r.title.match(/[A-Za-z0-9]{4,}/g) ?? []).slice(0, 4).some((w) => s.has(w.toLowerCase()));
+    });
+    expect(bad.map((r) => r.recallNumber)).toEqual([]);
+    expect(recalls.filter((r) => r.source === "CPSC").length).toBeGreaterThan(1000);
+  });
+});

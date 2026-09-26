@@ -49,3 +49,14 @@ Two seeded random samples of 20 recalls each, read against the full CPSC descrip
   2. Batch values that are production-date phrases ("production dates 01/06 thru 11/07"). They can never
      equal a printed batch code, so a model hit on such a recall is NEEDS_CHECK (the hold waits for a
      person). That is conservative, never a wrong reversal.
+
+## Correction, 2026-09-26 (CPSC title mismatch)
+
+A PDF review found recall 26569 showing a Joolz title beside a CooCooBaby notice. The CPSC API itself pairs
+8 recalls' URL, products, hazard and photos with the title of a DIFFERENT recall (09097, 11128, 16236, 25236,
+26069, 26227, 26554, 26569). The recall page's URL slug is its own title, so `build_recall_index.py` now takes
+the title from the URL whenever the API title shares no word with it, before any identifier is extracted.
+Effects: the model "Aer2" (the name of a Joolz stroller that is NOT recalled, taken from the wrong title) no
+longer matches 26569; the Joolz car seat adapters stay on 26568 by their real identifier NL311; 25236 (a butane
+torch recall that only looked like a children's product because of a Tonka title) left the index. Counts:
+1,137 -> 1,136 nursery recalls, 822 -> 820 with an identifier. The 449 -> 822 figure above is as measured then.

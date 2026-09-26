@@ -89,7 +89,7 @@ Deploys are manual: see PLAN.md, "Open pull requests" section, for the exact saf
   `src/app/api/{checkout,pickup}`), Microform card entry, Token Management Service saved card, card-linked
   promotions, over-authorization reversal, rate limit on unsigned checkouts.
 - [x] Trusted Agent Protocol (RFC 9421, Ed25519) agent checkout + tamper refusal (`src/server/tap/**`).
-- [x] Recall index: 1,208 CPSC + NHTSA recalls, matcher with batch and date rules (`data/`, `src/server/recalls/`).
+- [x] Recall index: 1,207 CPSC + NHTSA recalls, matcher with batch and date rules (`data/`, `src/server/recalls/`).
 - [x] Deal token (HMAC) so pickup can only settle its own hold for its own amount.
 - [x] Hold sweeper: daily Vercel cron releases holds older than 24 h (`src/server/deals/sweep.ts`).
 - [x] MongoDB Atlas: deal store, `/board`, seller live view `/deal/[id]`, `/trust` console.
