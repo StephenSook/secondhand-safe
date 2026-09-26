@@ -14,6 +14,7 @@
   "https://www.cpsc.gov/s3fs-public/blounge-3.jpg",
   "https://www.cpsc.gov/s3fs-public/blounge-4.jpg",
   "https://www.cpsc.gov/s3fs-public/blounge-5.jpg",
+  "https://www.cpsc.gov/s3fs-public/pic1_63.jpg",
   "https://www.cpsc.gov/s3fs-public/pic2_51.jpg",
   "https://www.cpsc.gov/s3fs-public/RecalledpaddedcribbumpersNO1.jpg",
   "https://www.cpsc.gov/s3fs-public/RecalledpaddedcribbumpersNO2.jpg",
@@ -476,7 +477,7 @@
   "https://i.ebayimg.com/images/g/reIAAeSwOktqtn-n/s-l500.webp",
   "https://images.craigslist.org/00S0S_9WIRkn7L7GJ_0bC0fu_600x450.jpg"
  ],
- "train_dropped_as_near_duplicates": 8,
+ "train_dropped_as_near_duplicates": 7,
  "group": {
   "https://www.cpsc.gov/s3fs-public/1-10283AM.png": "recall:21052",
   "https://www.cpsc.gov/s3fs-public/2-102838AM.png": "recall:21052",
@@ -491,6 +492,7 @@
   "https://www.cpsc.gov/s3fs-public/blounge-3.jpg": "recall:25473",
   "https://www.cpsc.gov/s3fs-public/blounge-4.jpg": "recall:25473",
   "https://www.cpsc.gov/s3fs-public/blounge-5.jpg": "recall:25473",
+  "https://www.cpsc.gov/s3fs-public/pic1_63.jpg": "recall:19112",
   "https://www.cpsc.gov/s3fs-public/pic2_51.jpg": "recall:19112",
   "https://www.cpsc.gov/s3fs-public/RecalledpaddedcribbumpersNO1.jpg": "recall:23737",
   "https://www.cpsc.gov/s3fs-public/RecalledpaddedcribbumpersNO2.jpg": "recall:23737",

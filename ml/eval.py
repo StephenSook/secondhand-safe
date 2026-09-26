@@ -41,6 +41,10 @@ def report(y, p):
 
 
 def main():
+    for name in ("clip", "dino"):
+        h = os.path.join(OUT, f"head_{name}.joblib")
+        if os.path.exists(h) and os.path.getmtime(h) < os.path.getmtime(os.path.join(OUT, "split.json")):
+            raise SystemExit(f"head_{name}.joblib is older than split.json: train.py did not finish; refusing to score a stale head")
     split = json.load(open(os.path.join(OUT, "split.json")))
     label = {r["url"]: r["label"] for r in csv.DictReader(open(os.path.join(HERE, "labels.csv")))}
     held = split["held_out"]

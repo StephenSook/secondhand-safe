@@ -198,3 +198,8 @@ html.js-motion [data-reveal] {
   }
   .marquee-track { animation: none; }
 }
+
+@keyframes scan {
+  0%, 100% { top: 8%; }
+  50% { top: 90%; }
+}
