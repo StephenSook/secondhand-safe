@@ -7,6 +7,7 @@ import type { Verdict } from "@/core/verdict";
 import { VERDICT_LABEL, CAPTURABLE } from "@/core/verdict";
 import type { ClipHead, ClassifyResult } from "@/core/clipHead";
 import type { LabelRead } from "@/server/ml/label";
+import type { LookAlike } from "@/server/db/vector";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
@@ -69,6 +70,8 @@ export function PickupScanner() {
   const [labelMsg, setLabelMsg] = useState("");
   const [cls, setCls] = useState<ClassifyResult | null>(null);
   const [clsMsg, setClsMsg] = useState("");
+  // closest CPSC recall photos to this photo (MongoDB Atlas Vector Search); a comparison aid, never a verdict
+  const [look, setLook] = useState<{ matches: LookAlike[] } | { error: string } | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [busy, setBusy] = useState("");
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -173,8 +176,13 @@ export function PickupScanner() {
       await loadClip("q8", (p) => setClsMsg(`Loading the banned-type model on this device… ${Math.round(p)}%`));
       setClsMsg("Looking at the photo…");
       const { applyHead } = await import("@/core/clipHead");
-      const r = applyHead(head, await embedImage(file, "q8"));
+      const emb = await embedImage(file, "q8");
+      const r = applyHead(head, emb);
       setCls(r);
+      // same embedding, sent to Atlas (512 numbers, never the photo)
+      void fetch("/api/lookalike", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ embedding: Array.from(emb) }) })
+        .then(async (res) => { const j = await res.json(); setLook(res.ok ? { matches: j.matches } : { error: j.error ?? `HTTP ${res.status}` }); })
+        .catch(() => setLook({ error: "The look-alike search did not answer." }));
       setClsMsg("");
       return r;
     } catch (e) {
@@ -189,6 +197,7 @@ export function PickupScanner() {
     setVerdict(null);
     setLabel(null);
     setCls(null);
+    setLook(null);
     setLabelMsg("");
     const url = await toDataUrl(file);
     setPhoto(url);
@@ -408,6 +417,30 @@ export function PickupScanner() {
             <p className="text-sm font-extrabold tracking-wider">ON-DEVICE MODEL</p>
             <p className="display text-3xl mt-1">{CLASS_NAME[cls.cls]} · {(cls.p * 100).toFixed(0)}%</p>
             <p className="mt-2 text-sm font-semibold text-ink/70">Ran in this browser. A guess under 60% never bans anything.</p>
+          </div>
+        )}
+        {look && (
+          <div className="rounded-[2rem] bg-paper border-[3px] border-ink p-6">
+            <p className="text-sm font-extrabold tracking-wider">CLOSEST CPSC RECALL PHOTOS · MONGODB ATLAS VECTOR SEARCH</p>
+            {"error" in look ? <p className="mt-2 font-semibold">{look.error}</p> : (
+              <ul className="mt-3 grid gap-3">
+                {look.matches.map((m) => (
+                  <li key={m.recallNumber} className="grid grid-cols-[4.5rem_1fr] gap-3 items-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.image} alt={`CPSC recall ${m.recallNumber} photo`} loading="lazy" referrerPolicy="no-referrer"
+                      className="w-[4.5rem] h-[4.5rem] object-cover rounded-xl border-2 border-ink bg-white" />
+                    <div className="min-w-0">
+                      <p className="font-extrabold leading-tight line-clamp-2">{m.title}</p>
+                      <p className="text-sm font-semibold">
+                        {m.strong ? <b>Very close match: compare the label with </b> : "Similar to "}
+                        <a href={m.notice} target="_blank" rel="noreferrer" className="underline">CPSC {m.recallNumber}</a> · similarity {Math.round(m.cosine * 100)}%
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-xs font-semibold text-ink/60">Searched the CPSC recall photos in our index with the embedding this browser computed. Looking alike is a reason to read the label closely, never a verdict: only the label check moves money.</p>
           </div>
         )}
         {verdict && (
