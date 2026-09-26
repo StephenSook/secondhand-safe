@@ -58,8 +58,9 @@ export async function shop(q: string, key: string | null, f?: typeof fetch): Pro
       };
       const reply = /\bsafe\b/i.test(g.reply ?? "") ? "Here is what I found, each one pre-screened." : String(g.reply ?? "").slice(0, 200);
       return { engine: "gemini", reply, intent, ...screenAll(intent) };
-    } catch {
-      // fall through to the labelled keyword search
+    } catch (e) {
+      // fall through to the labelled keyword search, and leave the reason in the function logs
+      console.warn("[shop] Gemini intent failed, using keyword search:", (e as Error).message);
     }
   }
   const intent = keywordIntent(q);

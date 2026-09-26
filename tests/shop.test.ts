@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { CATALOG, prescreen, search } from "@/server/shop/catalog";
 import { keywordIntent, shop } from "@/server/shop/agent";
+import { POST as agentCheckout } from "@/app/api/agent/checkout/route";
 
 describe("shopping agent catalog (real scanned listings)", () => {
   it("ships every scanned listing", () => {
@@ -46,5 +47,25 @@ describe("shopping agent catalog (real scanned listings)", () => {
     const k = await shop("bassinet under 80", "test-key", down);
     expect(k.engine).toBe("keywords");
     expect(k.reply).toMatch(/not reachable/);
+  });
+
+  it("a person's review outranks the model: confirmed is red, unsure is amber", () => {
+    const yes = CATALOG.find((l) => l.review?.ok === "yes");
+    expect(yes && prescreen(yes).tone).toBe("red");
+    const unsure = CATALOG.find((l) => l.review?.ok === "unsure");
+    expect(unsure && prescreen(unsure).tone).toBe("amber");
+  });
+  it("a banned-type guess below the decision threshold is amber, never 'photo check passed'", () => {
+    const low = CATALOG.filter((l) => l.cls !== "other" && l.p < 0.6 && !l.review);
+    expect(low.length).toBeGreaterThan(0);
+    for (const l of low) expect(prescreen(l).tone).not.toBe("clear");
+  });
+  it("the agent checkout refuses a red listing on the server, before anything is signed", async () => {
+    const red = CATALOG.find((l) => prescreen(l).tone === "red")!;
+    const r = await agentCheckout(new Request("http://x/api/agent/checkout", { method: "POST", body: JSON.stringify({ listingId: red.id }) }));
+    expect(r.status).toBe(403);
+    expect((await r.json()).error).toMatch(/will not buy/);
+    const unknown = await agentCheckout(new Request("http://x/api/agent/checkout", { method: "POST", body: JSON.stringify({ listingId: "nope" }) }));
+    expect(unknown.status).toBe(404);
   });
 });

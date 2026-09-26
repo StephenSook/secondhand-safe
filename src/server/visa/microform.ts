@@ -23,7 +23,7 @@ const hits = new Map<string, { n: number; t: number }>();
 export function underLimit(key: string, max = 60, windowMs = 60_000, now = Date.now()): boolean {
   const h = hits.get(key);
   if (!h || now - h.t > windowMs) {
-    if (hits.size > 5000) hits.clear();
+    if (hits.size > 5000) for (const [k, v] of hits) if (now - v.t > windowMs) hits.delete(k); // drop only expired windows
     hits.set(key, { n: 1, t: now });
     return true;
   }

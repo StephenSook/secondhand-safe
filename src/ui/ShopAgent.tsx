@@ -73,15 +73,18 @@ export function ShopAgent() {
     setBuying(l.id); setHeld(null);
     try {
       const resp = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listing: l.title.slice(0, 80), amountUsd: l.priceUsd }) });
+        body: JSON.stringify({ listingId: l.id }) });
       const j = await resp.json();
       const m = j.merchant ?? {};
       if (!resp.ok || m.status !== "HELD") throw new Error(m.error ?? j.error ?? `HTTP ${resp.status}`);
+      let handoff = true;
       try {
         sessionStorage.setItem("shs-deal", JSON.stringify({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token,
           authId: m.visa.authId, status: "HELD", at: m.at, card: m.card }));
-      } catch {}
-      setHeld({ id: l.id, ok: true, text: `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
+      } catch {
+        handoff = false; // private mode or storage blocked: the pickup page could not find this hold
+      }
+      setHeld({ id: l.id, ok: handoff, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
     } catch (e) {
       setHeld({ id: l.id, ok: false, text: `No hold was placed: ${(e as Error).message}` });
     } finally {

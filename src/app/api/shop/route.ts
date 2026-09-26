@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   let key: string | null = null;
   const raw = process.env.GEMINI_API_KEY?.trim();
   if (raw) {
-    try { key = await resolveGeminiKey(raw); } catch { key = null; }
+    try { key = await resolveGeminiKey(raw); } catch (e) { key = null; console.warn("[shop] Gemini credentials failed:", (e as Error).message); }
   }
   const t0 = Date.now();
   const r = await shop(q, key);

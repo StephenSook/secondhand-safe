@@ -15,11 +15,13 @@ export function parseWif(v: string): WifConfig | null {
   return { project: p[1], projectNumber: p[2], pool: p[3], provider: p[4], serviceAccount: p[5] };
 }
 
-let cached: { key: string; exp: number } | null = null;
+const cache = new Map<string, { key: string; exp: number }>(); // per config
 
 export async function wifGeminiKey(cfg: WifConfig, f: typeof fetch = fetch, oidc: () => Promise<string> = getVercelOidcToken,
   now = Date.now()): Promise<string> {
-  if (cached && cached.exp - 60_000 > now) return cached.key;
+  const id = JSON.stringify(cfg);
+  const hit = cache.get(id);
+  if (hit && hit.exp - 60_000 > now) return hit.key;
   const subject = await oidc();
   const sts = await f("https://sts.googleapis.com/v1/token", {
     method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(10_000),
@@ -41,8 +43,9 @@ export async function wifGeminiKey(cfg: WifConfig, f: typeof fetch = fetch, oidc
   const g = (await gen.json().catch(() => ({}))) as { accessToken?: string; expireTime?: string; error?: { message?: string } };
   if (!gen.ok || !g.accessToken) throw new Error(`Service account token refused: ${g.error?.message ?? gen.status}`);
   const exp = g.expireTime ? Date.parse(g.expireTime) : now + 3_000_000;
-  cached = { key: `vertex:${cfg.project}:${g.accessToken}`, exp };
-  return cached.key;
+  const key = `vertex:${cfg.project}:${g.accessToken}`;
+  cache.set(id, { key, exp });
+  return key;
 }
 
 /** GEMINI_API_KEY as configured -> a key readLabel() accepts (AI Studio key, vertex:..., or resolved wif:...). */
@@ -51,4 +54,4 @@ export async function resolveGeminiKey(raw: string): Promise<string> {
   return w ? wifGeminiKey(w) : raw;
 }
 
-export const _resetWifCache = () => { cached = null; };
+export const _resetWifCache = () => { cache.clear(); };
