@@ -5,6 +5,7 @@ import { setupGsap, useGSAP, gsap, SplitText, prefersReducedMotion } from "./mot
 import { WaveBlobs } from "./WaveBlobs";
 import { SquashButton } from "./SquashButton";
 import { DealLoop } from "./DealLoop";
+import { FloatingGear } from "./FloatingGear";
 
 export function Hero({ recalls }: { recalls: number }) {
   const root = useRef<HTMLElement>(null);
@@ -64,6 +65,7 @@ export function Hero({ recalls }: { recalls: number }) {
             </div>
           </div>
           <div data-reveal className="hero-deal relative justify-self-center">
+            <FloatingGear />
             <DealLoop />
             <p className="hero-note hand text-2xl text-ink absolute -left-10 -bottom-10 rotate-[-8deg] max-w-[9em]">
               a Visa hold, not a promise

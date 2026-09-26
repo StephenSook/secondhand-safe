@@ -7,6 +7,7 @@ import { Hero } from "@/ui/Hero";
 import { Problem } from "@/ui/Problem";
 import { Ribbons } from "@/ui/Ribbons";
 import { HowItWorks } from "@/ui/HowItWorks";
+import { ScrollScan } from "@/ui/ScrollScan";
 import { LiveCheck } from "@/ui/LiveCheck";
 import { Oracle, type OracleData } from "@/ui/Oracle";
 import { Footer } from "@/ui/Footer";
@@ -49,6 +50,7 @@ export default function Home() {
         <Problem />
         <Ribbons />
         <HowItWorks />
+        <ScrollScan />
         <LiveCheck />
         <Oracle d={oracle} />
       </main>

@@ -4,8 +4,8 @@ import { useRef } from "react";
 import { setupGsap, useGSAP, gsap, prefersReducedMotion } from "./motion/gsap";
 
 const STEPS = [
-  { n: "1", title: "Agree and hold", body: "You agree on a price. Visa authorizes the card and holds the money. The seller sees it is real; you have not paid.", chip: "HELD", cls: "bg-amber", chipCls: "bg-ink text-amber", note: "held, not paid" },
-  { n: "2", title: "Meet and scan", body: "At pickup, point your phone at the label on the back or underside. The barcode scanner reads the UPC.", chip: "SCANNING", cls: "bg-aqua", chipCls: "bg-ink text-aqua", note: "we read the label, not the listing" },
+  { n: "1", art: "/art/spot-handshake.webp", title: "Agree and hold", body: "You agree on a price. Visa authorizes the card and holds the money. The seller sees it is real; you have not paid.", chip: "HELD", cls: "bg-amber", chipCls: "bg-ink text-amber", note: "held, not paid" },
+  { n: "2", art: "/art/spot-parent-scan.webp", title: "Meet and scan", body: "At pickup, point your phone at the label on the back or underside. The barcode scanner reads the UPC.", chip: "SCANNING", cls: "bg-aqua", chipCls: "bg-ink text-aqua", note: "we read the label, not the listing" },
   { n: "3", title: "Check it for real", body: "Model and batch go against every CPSC nursery recall; the photo goes through our trained banned-type model.", chip: "CHECKING", cls: "bg-sand", chipCls: "bg-ink text-sand", note: "no inclined sleepers, ever" },
   { n: "4", title: "Capture or reverse", body: "No match: the hold is captured and the seller is paid. Recalled or banned: the hold is reversed. No dispute.", chip: "CAPTURED / REVERSED", cls: "bg-green-soft", chipCls: "bg-ink text-green-soft", note: "and nobody took it home" },
 ];
@@ -57,6 +57,11 @@ export function HowItWorks() {
           {STEPS.map((s) => (
             <li key={s.n} className={`hw-card relative rounded-[2rem] border-[3px] border-ink p-6 pt-5 min-h-[21rem] shadow-[6px_8px_0_var(--ink)] ${s.cls}`}>
               <p className="hand text-3xl">Step #{s.n}</p>
+              {"art" in s && s.art && (
+                // Generated ink spot illustration (public/art/CREDITS.md)
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={s.art} alt="" className="absolute right-4 top-4 w-24 h-24 object-cover rounded-2xl border-2 border-ink rotate-3" />
+              )}
               <span className={`inline-block mt-4 rounded-full px-3 py-1 text-xs font-extrabold tracking-wider ${s.chipCls}`}>{s.chip}</span>
               <h3 className="display text-3xl mt-4">{s.title}</h3>
               <p className="mt-3 font-semibold leading-snug">{s.body}</p>

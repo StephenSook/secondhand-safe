@@ -66,7 +66,7 @@ export function LiveCheck() {
   return (
     <section id="check" className="relative px-3 mt-3 scroll-mt-20" aria-labelledby="check-title">
       <div className="section-card bg-ink text-paper px-6 sm:px-12 py-24">
-        <p className="hand text-3xl text-amber -rotate-2 mb-4">try it, it is the real index</p>
+        <p className="hand text-3xl text-amber -rotate-2 mb-7">try it, it is the real index</p>
         <h2 id="check-title" className="display text-[clamp(2.6rem,5.4vw,5.4rem)] mt-2">Live recall check</h2>
         <p className="mt-4 max-w-[40em] font-semibold text-paper/80">
           Type what is printed on the label, or plug in a USB barcode scanner and scan the UPC. This calls the same

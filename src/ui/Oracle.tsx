@@ -51,7 +51,7 @@ export function Oracle({ d }: { d: OracleData }) {
       <div className="section-card bg-teal text-paper px-6 sm:px-12 py-24">
         <WaveBlobs tints={["#127b7b", "#168a89", "#1c9a98"]} className="opacity-70" />
         <div className="relative z-10">
-          <p className="hand text-3xl text-aqua -rotate-2 mb-4">sees what the listing text hides</p>
+          <p className="hand text-3xl text-aqua -rotate-2 mb-7">sees what the listing text hides</p>
           <h2 id="oracle-title" className="display text-[clamp(2.6rem,5.4vw,5.4rem)] mt-2 max-w-[13em]">
             A model that knows a banned product on sight
           </h2>

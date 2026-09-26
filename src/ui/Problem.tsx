@@ -50,7 +50,7 @@ export function Problem() {
       <div className="section-card bg-red-soft px-6 sm:px-12 py-24">
         <WaveBlobs tints={["#ffc9c6", "#ffb7b3", "#ffa39e"]} className="opacity-60" />
         <div className="relative z-10">
-          <p className="hand text-3xl text-red-deep -rotate-2 mb-4">why this exists</p>
+          <p className="hand text-3xl text-red-deep -rotate-2 mb-7">why this exists</p>
           <h2 id="problem-title" className="pb-title display text-[clamp(2.6rem,5.4vw,5.4rem)] mt-2 max-w-[14em]">
             Listing filters read the text. Nobody reads the label.
           </h2>
