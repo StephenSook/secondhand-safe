@@ -61,6 +61,16 @@ describe("checkout says explicitly when no hold was placed, and never claims it 
     expect(bad.placed).toBeUndefined();
   });
 
+  it("a PARTIAL_AUTHORIZED without an authorization id is uncertain (it cannot be released), never placed false", async () => {
+    visaEnv();
+    const f = vi.fn().mockResolvedValueOnce(reply(201, { status: "PARTIAL_AUTHORIZED", orderInformation: { amountDetails: { authorizedAmount: "30.00" } } }));
+    vi.stubGlobal("fetch", f);
+    const j = await (await post({ listing: "Crib", amountUsd: 64 })).json();
+    expect(j.uncertain).toBe(true);
+    expect(j.placed).toBeUndefined();
+    expect(f).toHaveBeenCalledTimes(1); // no id: nothing to reverse
+  });
+
   it("asks Visa never to partially authorize", async () => {
     visaEnv();
     const f = vi.fn().mockResolvedValueOnce(reply(201, { id: "d0", status: "DECLINED" }));

@@ -74,7 +74,10 @@ export async function POST(request: Request) {
   if (auth.status !== "AUTHORIZED" || !auth.id) {
     // AUTHORIZED_PENDING_REVIEW (any AUTHORIZED*, or AUTHORIZED without an id) can mean a hold exists; a readable
     // DECLINED comes back as 201 too and means no hold, so 2xx alone is not "unsure".
-    const unsure = !auth.parsed || auth.httpStatus === 0 || auth.httpStatus >= 500 || auth.status.startsWith("AUTHORIZED");
+    // any sign that money may be held (an AUTHORIZED* status, a partial status, or a held amount we could not
+    // release above because there was no authorization id) is uncertain, never "no hold"
+    const unsure = !auth.parsed || auth.httpStatus === 0 || auth.httpStatus >= 500 || auth.status.startsWith("AUTHORIZED")
+      || auth.status.startsWith("PARTIAL") || (auth.authorizedUsd ?? 0) > 0;
     const error = unsure
       ? "Visa did not confirm. A hold MAY have been placed; it will lapse on its own if nobody captures it. Do not retry right away."
       : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
