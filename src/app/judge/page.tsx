@@ -6,6 +6,7 @@ import { INDEX_SIZE, INDEX_AS_OF } from "@/server/recalls/match";
 import { integrationStatus } from "@/server/env";
 import { CopyLine } from "@/ui/CopyLine";
 import { BRAND } from "@/core/brand";
+import facts from "../../../docs/FACTS.json";
 
 export const metadata: Metadata = { title: `Judges: ${BRAND} in 3 minutes` };
 
@@ -29,12 +30,13 @@ export default async function JudgePage() {
     { t: "Check a real recall yourself", d: "Open the live check and tap “Harppa high chair”. It is CPSC recall 26-061: model BHC001, recalled only in batch 202408.", link: "/#check", cta: "Open the live check" },
     { t: "Try the edge cases", d: "Same model, other batch: KEEP HELD, because the recall names one batch. OCR slip “BHCOO1”: still matches. An unknown model: NO_MATCH, and it never says “safe”.", link: "/#check", cta: "Try them" },
     { t: "Run it from your terminal", d: "Same index, no key:", code: `curl "${base}/api/check?model=BHC001&batch=202408"` },
-    { t: "See the model's real scores", d: "Held-out products the model never saw. 1 of 107 ordinary items wrongly flagged, vs 38 for off-the-shelf CLIP.", code: `curl ${base}/api/stats`, link: "/#oracle", cta: "See the model section" },
+    { t: "Give the check to an AI shopping agent", d: "The same check is an MCP tool, recall_check. Point any MCP client at this URL, or call it directly:", code: `curl -s ${base}/api/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_check","arguments":{"model":"BHC001","batch":"202408"}}}'` },
+    { t: "See the model's real scores", d: `Held-out products the model never saw. ${facts.classifier.falseAlarmsOnOrdinary} of ${facts.classifier.ordinaryHeldOut} ordinary items wrongly flagged, vs ${facts.classifier.falseAlarmsZeroShot} for off-the-shelf CLIP.`, code: `curl ${base}/api/stats`, link: "/#oracle", cta: "See the model section" },
     { t: "Hold real money, then settle it at pickup", d: live.visa
-        ? "On /pickup, pick a listing and press Agree: a real Visa Acceptance sandbox authorization is created with capture off (HELD). Type BHC001 / 202408 and the hold is REVERSED at Visa; type any model with no recall and it is CAPTURED. The Visa ids are on screen."
+        ? "On /pickup, type Visa's sandbox test card (4111 1111 1111 1111, any CVV, a future expiry) into Visa's own Microform fields, pick a listing and press Agree: a real Visa Acceptance sandbox authorization is created with capture off (HELD). Type BHC001 / 202408 and the hold is REVERSED at Visa; type any model with no recall and it is CAPTURED. The Visa ids are on screen."
         : "On /pickup the scan decides CAPTURE or REVERSE. The Visa hold itself needs sandbox keys on this deployment (see the live list below); it is verified by tests/visa.live.test.ts.",
       link: "/pickup", cta: "Open pickup scan" },
-    { t: "See the Atlanta scan", d: "Every one of the 602 Craigslist Atlanta baby and kid listings we scanned, on a map, with what review found.", link: "/map", cta: "Open the map" },
+    { t: "See the Atlanta scan", d: `Every one of the ${facts.scannedAtlanta} Craigslist Atlanta baby and kid listings we scanned, on a map, with what review found.`, link: "/map", cta: "Open the map" },
     { t: "Read the code", d: "Every number on this site is computed by a script in the repo. CI runs lint, types, tests, build, pytest, secret scan and an em-dash gate.", link: "https://github.com/StephenSook/secondhand-safe", cta: "GitHub" },
   ];
   return (
