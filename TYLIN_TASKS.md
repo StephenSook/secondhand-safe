@@ -1,92 +1,91 @@
 # Tylin Tasks
 
-Personal task tracker. Source of truth is `PLAN.md`; this file is a convenience view only. The code-level
-steps for each task are in `docs/IMPLEMENTATION.md`.
+Personal task view. Source of truth is `PLAN.md` (statuses, contracts, open PRs). Updated Sat Sep 26, 3:40 PM.
 
-Legend: [ ] not started · [-] in progress · [x] done · [!] blocked
-
----
-
-## Read this first (Sat 4 AM, from Stephen's session)
-
-While you slept, the blocking backend pieces were built so the frontend could run end to end. `git pull`
-before anything. Already done and live at https://secondhand-safe-web.vercel.app:
-
-- Scaffold, env contract, CI (0.2 to 0.4); CPSC recall index + matcher (1.2, 1.3); public API (2.2); deploy +
-  probe (2.1).
-- **Visa loop (PR #7):** `src/server/visa/acceptance.ts` signs requests (HTTP Signature); `/api/checkout`
-  authorizes with capture off (the hold); `/api/pickup` captures or reverses the real hold. Verified live on
-  Cybersource's PUBLIC sample merchant `testrest`.
-
-Your highest-value next steps:
-1. Put YOUR Visa sandbox keys in `.env.local` (`VISA_MERCHANT_ID`, `VISA_KEY_ID`, `VISA_SECRET_KEY`), run
-   `node --env-file=.env.local node_modules/vitest/vitest.mjs run --config vitest.live.config.ts tests/visa.live.test.ts`,
-   and confirm the transactions appear in your Business Center (open question Q3).
-2. Microform card entry (3.9), TAP agent checkout (3.10), Atlas + change stream for the board (3.11),
-   Solana devnet passport (3.12). All listed in PLAN.md with the files to touch.
+Legend: [ ] not started · [-] in progress · [x] done · [!] blocked on a person
 
 ---
 
-## Keys to gather (you sign up yourself; values go in `.env.local`, never in git)
+## Read this first
 
-| Name | Where you get it | What it unblocks |
-|---|---|---|
-| `VISA_MERCHANT_ID`, `VISA_KEY_ID`, `VISA_SECRET_KEY` | developer.visaacceptance.com, sandbox sign-up, then Test Business Center, REST shared-secret key | 0.6 live auth/capture/reversal, 1.5, 2.4 |
-| Visa Developer project (Visa Direct + Payment Passkey) | developer.visa.com, new project; Visa generates the two-way SSL cert | 2.5 |
-| Visa Intelligent Commerce | developer.visa.com "Request Access" + developer.visaacceptance.com agentic sandbox sign-up | claimed only if granted |
-| `MONGODB_URI` | MongoDB Atlas M0 (mlh.link/mongodb for the $50 student credit); invite Stephen to the project | 1.2, 1.4, everything |
-| `TAP_AGENT_PRIVATE_KEY_HEX`, `TAP_AGENT_KEY_ID` | generate locally (ed25519) | 1.1 |
-| `SOLANA_SECRET_KEY_B58` | devnet keypair + faucet.solana.com (2 requests / 8 h; GitHub login raises it) | 2.3 |
-| GitHub Actions secrets | the same `VISA_*` + `MONGODB_URI`, set on this repo | the CI live tests |
+The product is **Lullabuy** (repo name stays `secondhand-safe`). Live at **https://lullabuy.tech** (also
+https://secondhand-safe-web.vercel.app). `git pull` before anything.
 
-Keys move to Stephen by AirDrop of `.env.local`, never Discord.
+Your role for judging (Sun 9:30-11 AM): **you own the "how does it work" questions** while Stephen owns the
+story, the product and the business case. Stephen has a 31-page technical guide written for you
+(`Lullabuy-Technical-Guide-Tylin.pdf`, on his Desktop; he will AirDrop it). It is not in the repo on purpose:
+it has our judge Q&A prep.
+
+Everything below the "Done" list is live and tested. You do not need to build anything to be ready.
 
 ---
 
-## Lane ownership
+## Before the expo (in this order)
 
-Files you own exclusively:
-- `src/server/**` (except `src/server/ml/**` and `src/server/voice/**`)
-- `src/core/**`
-- `src/app/api/**` (except `src/app/api/agent/**`)
-- `data/**`
-- `.github/workflows/**`
-- `tests/` for your modules
+- [ ] **T1. Read the technical guide** and the 32 judge questions at the end. Mark any answer you would not
+  be comfortable defending and tell Stephen.
+- [ ] **T2. Walk the judge path yourself on your phone:** https://lullabuy.tech/judge, every step. Note
+  anything slow, confusing or broken in the team chat (with the step number).
+- [ ] **T3. Run the demo twice at the table** with Stephen:
+  - Deal 1: hold $64 on the Harppa high chair, scan the printed CPSC 26-061 label: **REVERSED**.
+  - Deal 2: hold on the real item, scan its label: **CAPTURED**, then open the Solana passport link.
+  - Show `/board` (seller QR view) and `/trust` (Trust and Safety console).
+- [ ] **T4. Know the three commands** a technical judge may ask for (they work from any laptop):
+  - `curl "https://lullabuy.tech/api/check?model=BHC001&batch=202408"` (recall match, live)
+  - `curl https://lullabuy.tech/api/health` (every integration true/false, read from server config)
+  - MCP: `{"mcpServers":{"lullabuy":{"type":"http","url":"https://lullabuy.tech/api/mcp"}}}`
+- [ ] **T5. Review PR #27 (voice agent) and PR #32 (Atlas look-alike)** on GitHub: read the diff, leave an
+  approval or a comment. Merge rule is in PLAN.md "Open pull requests".
+- [!] **T6. Visa Developer Platform account + sandbox project with Visa Direct (Push Funds).** Account
+  creation is a human step. Once the project exists, tell Stephen; the CSR, cert and code are done on his
+  side. Unlocks seller payout (PLAN 3.17 / H1). Skip if short on time: it is not needed for the demo.
+- [ ] **T7. Optional:** your own Visa sandbox keys in `.env.local` (`VISA_MERCHANT_ID`, `VISA_KEY_ID`,
+  `VISA_SECRET_KEY`) so our test transactions show in YOUR Business Center (PLAN open question Q3). The live
+  site uses Cybersource's public sandbox merchant today.
 
 ---
 
-## Phase 0: Scaffold (Fri 11 PM to Sat 2 AM)
-- [ ] **0.2** Next.js scaffold in place + deps.
-- [ ] **0.3** `src/server/env.ts` + test.
-- [ ] **0.4** CI (lint, typecheck, vitest, pytest, build, gitleaks, em-dash gate), every gate bare.
-- [ ] **0.5** Your keys (table above).
-- [ ] **0.6** **GATE:** live sandbox auth → capture, auth → reversal.
+## Run it locally (optional)
 
-## Phase 1: Core loop (Sat 12 AM to 6 AM)
-- [ ] **1.1** TAP sign/verify + tamper tests.
-- [ ] **1.2** Recall index (CPSC + NHTSA) into Atlas + a 20-record hand check.
-- [ ] **1.3** Verdict rules + fuzzy matcher.
-- [ ] **1.4** Atlas indexes + change stream SSE.
-- [ ] **1.5** Deal state machine + `/api/checkout` + `/api/pickup` + sweeper.
+```bash
+git pull && npm ci
+# get .env.local from Stephen by AirDrop (never Discord, never git)
+npm run dev          # http://localhost:3000
+npx vitest run       # unit tests (live tests skip without keys)
+npm run lint && npx tsc --noEmit
+```
 
-## Phase 2: Deploy + depth (Sat 6 AM to 2 PM)
-- [ ] **2.1** Vercel deploy + e2e + probe (keep it ON through judging).
-- [ ] **2.2** `/api/check`, `/api/stats`, `/api/health`.
-- [ ] **2.3** Solana passport + memo.
-- [ ] **2.4** Microform + TMS.
-- [ ] **2.5** Visa Direct + Payment Passkey.
-- [ ] **2.6** Recall watch + web push.
+Deploys are manual: see PLAN.md, "Open pull requests" section, for the exact safe steps.
 
-## Phase 3-4
-- [ ] **3.3** MCP `recall_check` server.
-- [ ] **3.5** Codex adversarial rounds until clean.
-- [ ] **4.1** Claims audit + gitleaks.
-- [ ] **4.5** Post-merge main CI verified on the SHA.
+---
+
+## Done (all live and in CI)
+
+- [x] Visa Acceptance sandbox hold: authorize with capture off, capture or reverse at pickup (`src/server/visa/**`,
+  `src/app/api/{checkout,pickup}`), Microform card entry, Token Management Service saved card, card-linked
+  promotions, over-authorization reversal, rate limit on unsigned checkouts.
+- [x] Trusted Agent Protocol (RFC 9421, Ed25519) agent checkout + tamper refusal (`src/server/tap/**`).
+- [x] Recall index: 1,208 CPSC + NHTSA recalls, matcher with batch and date rules (`data/`, `src/server/recalls/`).
+- [x] Deal token (HMAC) so pickup can only settle its own hold for its own amount.
+- [x] Hold sweeper: daily Vercel cron releases holds older than 24 h (`src/server/deals/sweep.ts`).
+- [x] MongoDB Atlas: deal store, `/board`, seller live view `/deal/[id]`, `/trust` console.
+- [x] Solana devnet passport (Memo) with a public verifier page `/passport/[sig]`.
+- [x] Gemini label reader, keyless (Vercel OIDC to Google Cloud Workload Identity Federation).
+- [x] On-device CLIP classifier (trained head beats zero-shot; numbers in `docs/FACTS.json`).
+- [x] ElevenLabs spoken verdicts (EN/ES); MCP server `recall_check`; live probe every 30 min on both origins.
+- [x] Mobile: Expo app (Shop, Scan, Board); Android APK on the GitHub Release `mobile-v1.0.0`.
+
+## In review (do not edit these files without telling Stephen)
+
+- [-] PR #27: ElevenLabs conversational voice agent + one-open-hold guard (`src/ui/{VoiceAgent,ShopAgent}.tsx`,
+  `src/app/api/voice-agent/**`, `src/app/api/{checkout,agent/checkout}/route.ts`).
+- [-] PR #32: Atlas Vector Search look-alike (`src/server/db/vector.ts`, `src/app/api/lookalike`, `/pickup` card).
 
 ---
 
 ## Hard rules
-1. No em dashes in judge-facing text.
+1. No em dashes in anything a judge reads.
 2. Stage named paths only. Never `git add -A`.
-3. CI gates run bare; a skipped test is a false green.
-4. Status commits are separate from code commits.
+3. Read CI results before merging, in a separate step. A skipped test is a false green.
+4. Never commit or paste a key. `.env.local` moves by AirDrop only.
+5. Never say the product makes an item "safe". Say "no recall match as of <date>".
