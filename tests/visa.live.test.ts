@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { authorize, capture, reverse, newDealId, type VisaCreds } from "@/server/visa/acceptance";
+import { settle } from "@/server/deals/settle";
+import { checkLabel } from "@/server/recalls/match";
 
 /**
  * PLAN 0.6 gate, live against the Visa Acceptance sandbox (apitest.cybersource.com): auth (HOLD) -> capture,
@@ -28,5 +30,17 @@ describe.skipIf(!e.VISA_MERCHANT_ID)("Visa Acceptance sandbox, live", () => {
     const rev = await reverse(creds, auth.id!, { dealId, amountUsd: 64, reason: "CPSC recall 26-061 at pickup" });
     console.log("reversal", rev.httpStatus, rev.status, rev.id, rev.reason ?? "");
     expect(rev.status).toBe("REVERSED");
+  }, 60_000);
+
+  it("replaying a settlement is REFUSED by Visa and reported as REFUSED, never HELD or a second capture", async () => {
+    const dealId = newDealId();
+    const auth = await authorize(creds, { dealId, amountUsd: 25, source: { card } });
+    expect(auth.status).toBe("AUTHORIZED");
+    const deal = { dealId, authId: auth.id!, amountUsd: 25 };
+    const first = await settle(creds, deal, checkLabel({ model: "ZZT9Q41X" }));
+    const replay = await settle(creds, deal, checkLabel({ model: "BHC001", batch: "202408" }));
+    console.log("first", first.status, "replay", replay.status, replay.visa?.reason);
+    expect(first.status).toBe("CAPTURED");
+    expect(replay.status).toBe("REFUSED");
   }, 60_000);
 });

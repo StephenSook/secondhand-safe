@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
  * Deal token: binds dealId + Visa authorization id + amount at checkout, so /api/pickup can only settle the
- * hold it was issued for, for exactly that amount. Keyed from the Visa secret (never sent to the client).
+ * hold it was issued for, for exactly that amount. Keyed from DEAL_TOKEN_SECRET when set (so rotating the Visa
+ * key does not orphan open holds), otherwise derived from the Visa secret. Never sent to the client.
  */
 export interface DealClaims { dealId: string; authId: string; amountUsd: number; iat: number }
 
@@ -10,7 +11,8 @@ const TTL_MS = 12 * 60 * 60 * 1000;
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 
 function mac(secret: string, body: string) {
-  return createHmac("sha256", `shs-deal:${secret}`).update(body).digest();
+  const key = process.env.DEAL_TOKEN_SECRET?.trim() || `shs-deal:${secret}`;
+  return createHmac("sha256", key).update(body).digest();
 }
 
 export function issueDealToken(secret: string, c: Omit<DealClaims, "iat">, now = Date.now()): string {

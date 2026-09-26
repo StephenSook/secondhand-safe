@@ -37,13 +37,25 @@ export function signedHeaders(creds: VisaCreds, method: "GET" | "POST", path: st
   };
 }
 
-async function post(creds: VisaCreds, path: string, payload: object, fetchImpl: typeof fetch = fetch): Promise<VisaResult> {
+/**
+ * Success is an ALLOWLIST per operation: authorize -> AUTHORIZED, capture -> PENDING, reversal -> REVERSED.
+ * Anything else (including a 2xx with an unexpected or missing status) is not ok. A network failure never
+ * throws: it returns status NETWORK_ERROR so callers report "unknown", never a guessed state.
+ */
+const SUCCESS: Record<string, string> = { authorize: "AUTHORIZED", capture: "PENDING", reverse: "REVERSED" };
+
+async function post(creds: VisaCreds, path: string, payload: object, op: keyof typeof SUCCESS, fetchImpl: typeof fetch = fetch): Promise<VisaResult> {
   const body = JSON.stringify(payload);
-  const res = await fetchImpl(`https://${creds.host}${path}`, { method: "POST", headers: signedHeaders(creds, "POST", path, body), body });
+  let res: Response;
+  try {
+    res = await fetchImpl(`https://${creds.host}${path}`, { method: "POST", headers: signedHeaders(creds, "POST", path, body), body, signal: AbortSignal.timeout(20_000) });
+  } catch (e) {
+    return { ok: false, status: "NETWORK_ERROR", httpStatus: 0, reason: (e as Error).name, raw: null };
+  }
   const raw = (await res.json().catch(() => ({}))) as { id?: string; status?: string; errorInformation?: { reason?: string; message?: string }; reason?: string; message?: string };
   const status = raw.status ?? "ERROR";
   return {
-    ok: res.ok && !["DECLINED", "INVALID_REQUEST", "SERVER_ERROR"].includes(status),
+    ok: res.ok && status === SUCCESS[op],
     status,
     id: raw.id,
     httpStatus: res.status,
@@ -72,7 +84,7 @@ export function authorize(creds: VisaCreds, opts: { dealId: string; amountUsd: n
       ? { paymentInformation: { card: opts.source.card } }
       : { tokenInformation: { transientTokenJwt: opts.source.transientTokenJwt } }),
   };
-  return post(creds, "/pts/v2/payments", payload, f);
+  return post(creds, "/pts/v2/payments", payload, "authorize", f);
 }
 
 /** Full-amount capture of a held authorization (the item passed the pickup check). */
@@ -80,7 +92,7 @@ export function capture(creds: VisaCreds, authId: string, opts: { dealId: string
   return post(creds, `/pts/v2/payments/${authId}/captures`, {
     clientReferenceInformation: { code: opts.dealId },
     orderInformation: { amountDetails: { totalAmount: amount(opts.amountUsd), currency: "USD" } },
-  }, f);
+  }, "capture", f);
 }
 
 /** Full-amount reversal of a held authorization (recalled or banned at pickup): the hold is released. */
@@ -88,7 +100,7 @@ export function reverse(creds: VisaCreds, authId: string, opts: { dealId: string
   return post(creds, `/pts/v2/payments/${authId}/reversals`, {
     clientReferenceInformation: { code: opts.dealId },
     reversalInformation: { amountDetails: { totalAmount: amount(opts.amountUsd) }, reason: opts.reason.slice(0, 100) },
-  }, f);
+  }, "reverse", f);
 }
 
 export const newDealId = () => `shs-${randomUUID().slice(0, 18)}`;

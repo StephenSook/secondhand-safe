@@ -36,9 +36,19 @@ describe("money rule", () => {
     expect(r.status).toBe("HELD");
     expect(called).toBe(false);
   });
-  it("a failed reversal leaves the deal HELD, never claims REVERSED", async () => {
-    const f = (async () => new Response(JSON.stringify({ status: "INVALID_REQUEST" }), { status: 400 })) as unknown as typeof fetch;
+  it("a refused reversal (already settled) reports REFUSED, never REVERSED or HELD", async () => {
+    const f = (async () => new Response(JSON.stringify({ status: "INVALID_REQUEST", reason: "MISSING_AUTH" }), { status: 400 })) as unknown as typeof fetch;
     const r = await settle(creds, { dealId: "d", authId: "a", amountUsd: 5 }, checkLabel({ model: "BHC001", batch: "202408" }), f);
-    expect(r.status).toBe("HELD");
+    expect(r.status).toBe("REFUSED");
+  });
+  it("a network failure reports UNKNOWN and does not throw", async () => {
+    const f = (async () => { throw new TypeError("fetch failed"); }) as unknown as typeof fetch;
+    const r = await settle(creds, { dealId: "d", authId: "a", amountUsd: 5 }, checkLabel({ model: "ZZT9Q41X" }), f);
+    expect(r.status).toBe("UNKNOWN");
+  });
+  it("a 2xx without the expected status is not a capture (allowlist)", async () => {
+    const f = (async () => new Response("<html>ok</html>", { status: 200 })) as unknown as typeof fetch;
+    const r = await settle(creds, { dealId: "d", authId: "a", amountUsd: 5 }, checkLabel({ model: "ZZT9Q41X" }), f);
+    expect(r.status).toBe("REFUSED");
   });
 });

@@ -12,7 +12,7 @@ import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 type Health = { integrations: Record<string, boolean> };
 type Deal = {
   dealId: string; listing: string; amountUsd: number; token: string; authId: string;
-  status: "HELD" | "CAPTURED" | "REVERSED"; settlementId?: string; at: string;
+  status: "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN"; settlementId?: string; reason?: string; at: string;
 };
 const DEAL_KEY = "shs-deal";
 const LISTINGS = [
@@ -154,14 +154,15 @@ export function PickupScanner() {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify(settling ? { ...payload, token: deal!.token } : payload),
     });
-    const j = (await r.json()) as { verdict: Verdict; status?: Deal["status"]; visa?: { id?: string }; error?: string };
+    const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
+      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; error?: string };
     if (!r.ok || !j.verdict) {
       setBusy("");
-      setDealErr(j.error ?? `HTTP ${r.status}`);
+      setDealErr(`${j.error ?? `HTTP ${r.status}`}${settling ? " The hold may or may not have settled: do not retry, check the Visa Business Center." : ""}`);
       return;
     }
     setVerdict(j.verdict);
-    if (settling && j.status) saveDeal({ ...deal!, status: j.status, settlementId: j.visa?.id });
+    if (settling && j.status) saveDeal({ ...deal!, status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason });
     setBusy("");
     requestAnimationFrame(() => {
       if (prefersReducedMotion() || !decisionRef.current) return;
@@ -213,7 +214,7 @@ export function PickupScanner() {
       </div>
 
       <div aria-live="polite" className="grid gap-5">
-        <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${!visaLive ? "bg-sand" : !deal ? "bg-paper" : deal.status === "HELD" ? "bg-amber" : deal.status === "CAPTURED" ? "bg-green text-paper" : "bg-red text-paper"}`}>
+        <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${!visaLive ? "bg-sand" : !deal ? "bg-paper" : deal.status === "HELD" ? "bg-amber" : deal.status === "CAPTURED" ? "bg-green text-paper" : deal.status === "REVERSED" ? "bg-red text-paper" : "bg-sand"}`}>
           <p className="text-sm font-extrabold tracking-wider">PAYMENT · VISA ACCEPTANCE SANDBOX</p>
           {!visaLive && (
             <>
@@ -246,6 +247,8 @@ export function PickupScanner() {
                 {deal.settlementId && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
                 <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
               </dl>
+              {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}): this hold was already settled or is not open. Nothing more moved.</p>}
+              {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
               {deal.status === "HELD"
                 ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>
                 : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">Start a new deal</button>}
