@@ -14,7 +14,9 @@ type Screen = { tone: "red" | "amber" | "clear"; kind: string; headline: string;
 type Listing = { id: string; source: string; region: string | null; url: string; image: string | null; title: string; priceUsd: number | null };
 type Result = { listing: Listing; screen: Screen };
 type ShopResponse = { engine: "gemini" | "keywords"; reply: string; results: Result[]; counts: { red: number; amber: number; clear: number }; ms: number; error?: string };
-type Held = { id: string; ok: boolean; text: string };
+/** A hold Visa really placed (kept through later searches and failed attempts) vs. a failed attempt. */
+type Held = { id: string; handoff: boolean; text: string };
+type Failed = { id: string; text: string };
 
 /**
  * What the voice agent can do to this screen (PLAN 5.6): run a search so the results appear, and point at one
@@ -48,6 +50,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   const [res, setRes] = useState<ShopResponse | null>(null);
   const [err, setErr] = useState("");
   const [held, setHeld] = useState<Held | null>(null);
+  const [failed, setFailed] = useState<Failed | null>(null);
   const [buying, setBuying] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -77,7 +80,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
     if (!text) return null;
     // A real Visa hold stays on screen through later searches (a voice search can run any time); only a failed
     // attempt's message is cleared.
-    setQ(text); setBusy(true); setErr(""); setHeld((h) => (h?.ok ? h : null)); setProposed("");
+    setQ(text); setBusy(true); setErr(""); setFailed(null); setProposed("");
     try {
       const r = await fetch("/api/shop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q: text }) });
       const j = (await r.json()) as ShopResponse;
@@ -129,7 +132,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
 
   async function buy(r: Result) {
     const l = r.listing;
-    setBuying(l.id); setHeld(null);
+    setBuying(l.id); setFailed(null);
     try {
       const resp = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ listingId: l.id }) });
@@ -143,9 +146,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
       } catch {
         handoff = false; // private mode or storage blocked: the pickup page could not find this hold
       }
-      setHeld({ id: l.id, ok: handoff, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
+      setHeld({ id: l.id, handoff, text: !handoff ? `HELD $${m.amountUsd.toFixed(2)} at Visa (authorization ${m.visa.authId}), but this browser blocked storage, so the pickup page cannot pick it up. It lapses on its own if nobody captures it.` : `HELD $${m.amountUsd.toFixed(2)} at Visa. The agent signed the checkout (Trusted Agent Protocol, key ${m.tap?.keyid ?? "?"}) and our merchant verified it before calling Visa. Nothing is charged until the label passes at pickup.` });
     } catch (e) {
-      setHeld({ id: l.id, ok: false, text: `No hold was placed: ${(e as Error).message}` });
+      setFailed({ id: l.id, text: `No hold was placed: ${(e as Error).message}` });
     } finally {
       setBuying("");
     }
@@ -201,10 +204,10 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
               </div>
             )}
           </div>
-          {held?.ok && !res.results.some((r) => r.listing.id === held.id) && (
+          {held && !res.results.some((r) => r.listing.id === held.id) && (
             <div role="status" className="rounded-xl border-2 border-ink bg-amber p-3 font-bold">
               {held.text}
-              <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>
+              {held.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
             </div>
           )}
           {res.results.length === 0 && <p className="hand text-3xl">Nothing matched. Try fewer words or a higher budget.</p>}
@@ -250,10 +253,13 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
                     {r.screen.tone === "red" && r.screen.kind === "BANNED_TYPE" && <SpeakVerdict kind="BANNED_TYPE" />}
                   </div>
                   {held?.id === l.id && (
-                    <div role="status" className={`col-span-2 rounded-xl border-2 border-ink p-3 font-bold ${held.ok ? "bg-amber" : "bg-red-soft"}`}>
+                    <div role="status" className="col-span-2 rounded-xl border-2 border-ink p-3 font-bold bg-amber">
                       {held.text}
-                      {held.ok && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
+                      {held.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
                     </div>
+                  )}
+                  {failed?.id === l.id && (
+                    <div role="alert" className="col-span-2 rounded-xl border-2 border-ink p-3 font-bold bg-red-soft">{failed.text}</div>
                   )}
                 </li>
               );
