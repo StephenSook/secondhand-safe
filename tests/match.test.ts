@@ -126,6 +126,60 @@ describe("short all-digit model numbers never move money on their own (real Delt
   });
 });
 
+describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", () => {
+  it("a recalled UPC-A matches as scanned, as its EAN-13 (0 + UPC-A) and as its GTIN-14 (00 + UPC-A)", () => {
+    for (const upc of ["669028116546", "0669028116546", "00669028116546"]) {
+      expect(checkLabel({ upc }).kind, upc).toBe("RECALL_MATCH");
+      expect(checkLabel({ upc }).recall?.recallNumber).toBe("26530");
+    }
+  });
+  it("an 11-digit recall UPC never moves money: either reading of it keeps the hold (recall 11220, 80640907402)", () => {
+    // 080640907402 (zero missing in front) and 806409074020 (check digit missing) are two different valid UPC-As
+    for (const upc of ["080640907402", "806409074020"]) {
+      const v = checkLabel({ upc });
+      expect(v.kind, upc).toBe("NEEDS_CHECK");
+      expect(v.recall?.recallNumber).toBe("11220");
+      expect(v.reason).toMatch(/printed incomplete/);
+    }
+    expect(checkLabel({ upc: "066264914743" }).kind).toBe("NEEDS_CHECK"); // CPSC 12017 lists 06626491474
+  });
+  it("REGRESSION: a UPC with a wrong check digit is never an identifier (066264914740, a corrupted 066264914743)", () => {
+    const alone = checkLabel({ upc: "066264914740" });
+    expect(alone.kind).toBe("UNREADABLE");
+    expect(alone.reason).toMatch(/not a valid barcode/);
+    // a clean model does not rescue a misread barcode: nothing is decided, the hold stays
+    const withModel = checkLabel({ upc: "066264914740", model: "ZZT9Q41X" });
+    expect(withModel.kind).toBe("NEEDS_CHECK");
+    expect(withModel.reason).toMatch(/barcode did not read correctly/);
+    expect(checkLabel({ upc: "066264914740", model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH"); // positive evidence stands
+    expect(checkLabel({ upc: "066264914740", model: "BHC001" }).kind).toBe("NEEDS_CHECK");
+  });
+  it("a GTIN-14 case code (indicator 1-8) of a recalled item matches the item's recall (10669028116543 for 26530)", () => {
+    const v = checkLabel({ upc: "10669028116543" });
+    expect(v.kind).toBe("RECALL_MATCH");
+    expect(v.recall?.recallNumber).toBe("26530");
+  });
+  it("REGRESSION: a recall that lists a truncated barcode still holds the real one (CPSC 20-113 lists 693983769445; the pillow's barcode is 6939837694455)", () => {
+    const v = checkLabel({ upc: "6939837694455" });
+    expect(v.kind).not.toBe("NO_MATCH");
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("20113");
+  });
+  it("a recall UPC with a check-digit typo still holds the corrected barcode (CPSC 08-579 lists 984343144040; 984343144044 is valid)", () => {
+    const v = checkLabel({ upc: "984343144044" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("08579");
+  });
+  it("a scanned code containing an incomplete 10-digit recall UPC keeps the hold (060258358834, recall 14257 lists 60258-35883)", () => {
+    const v = checkLabel({ upc: "060258358834" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("14257");
+  });
+  it("a clean UPC with no recall is NO_MATCH (the e2e capture UPC)", () => {
+    expect(checkLabel({ upc: "012345678905" }).kind).toBe("NO_MATCH");
+  });
+});
+
 describe("CPSC API titles that belong to a different recall (data/handcheck.md, 2026-09-26)", () => {
   it("the Joolz car seat adapters match 26568 by their real identifier NL311", () => {
     const v = checkLabel({ model: "NL311" });

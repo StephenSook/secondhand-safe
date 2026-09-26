@@ -15,7 +15,8 @@ export default function BoardPage() {
           <p className="hand text-3xl text-ink/70 -rotate-2 mb-3">every hold, and how it ended</p>
           <h1 className="display text-[clamp(2.4rem,5.5vw,5rem)]">Deal board</h1>
           <DealBoard />
-          <p className="mt-8 font-bold"><Link href="/trust" className="underline decoration-2 underline-offset-4">Open the Trust and Safety console: why holds were reversed, time to decision, money kept from recalled items →</Link></p>
+          <p className="mt-8 font-bold"><Link href="/checkpoint" className="underline decoration-2 underline-offset-4">Open the pickup checkpoint: the table kiosk that settles a hold from a barcode scan →</Link></p>
+          <p className="mt-3 font-bold"><Link href="/trust" className="underline decoration-2 underline-offset-4">Open the Trust and Safety console: why holds were reversed, time to decision, money kept from recalled items →</Link></p>
         </section>
       </main>
     </>

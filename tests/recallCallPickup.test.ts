@@ -9,8 +9,13 @@ const pending: Promise<unknown>[] = [];
 vi.mock("@vercel/functions", () => ({ waitUntil: (p: Promise<unknown>) => { pending.push(p); } }));
 vi.mock("@/server/visa/creds", () => ({ visaCreds: () => ({ merchantId: "m", keyId: "k", secret: "s", host: "h" }) }));
 vi.mock("@/server/deals/token", () => ({ verifyDealToken: () => ({ dealId: "shs-1", authId: "auth-1", amountUsd: 42, iat: Date.now() }) }));
-vi.mock("@/server/deals/settle", () => ({ settle: async () => ({ status: "REVERSED", visa: { id: "rev-1", status: "REVERSED", httpStatus: 201 } }) }));
-vi.mock("@/server/deals/store", () => ({ recordSettlement: async () => true }));
+vi.mock("@/server/deals/settle", async (orig) => ({ ...(await orig<typeof import("@/server/deals/settle")>()), settle: async () => ({ status: "REVERSED", visa: { id: "rev-1", status: "REVERSED", httpStatus: 201 } }) }));
+vi.mock("@/server/deals/store", () => ({ recordSettlement: async () => true, getDeal: async () => ({ state: "missing" }) }));
+// main's one-settlement-per-deal claim, on an in-memory store instead of Atlas
+vi.mock("@/server/deals/claim", async (orig) => {
+  const real = await orig<typeof import("@/server/deals/claim")>();
+  return { ...real, mongoClaims: async () => real.memoryClaims() };
+});
 const hung = vi.fn((...args: unknown[]) => new Promise(() => void args));
 vi.mock("@/server/call/pickup", () => ({ callAfterReversal: hung }));
 
