@@ -20,9 +20,11 @@ export type CardState = { state: "loading" } | { state: "ready"; tokenize: Token
 function loadLibrary(src: string, integrity: string): Promise<void> {
   if (window.Flex) return Promise.resolve();
   return new Promise((ok, bad) => {
+    const t = setTimeout(() => bad(new Error("Visa's card-field library did not load in 15 s")), 15_000);
     const s = document.createElement("script");
     s.src = src; s.integrity = integrity; s.crossOrigin = "anonymous"; s.async = true;
-    s.onload = () => ok(); s.onerror = () => bad(new Error("Visa's card-field library did not load"));
+    s.onload = () => { clearTimeout(t); ok(); };
+    s.onerror = () => { clearTimeout(t); bad(new Error("Visa's card-field library did not load")); };
     document.head.appendChild(s);
   });
 }
@@ -51,7 +53,8 @@ export function CardFields({ onState }: { onState: (s: CardState) => void }) {
         if (!lib?.clientLibrary || !lib?.clientLibraryIntegrity) throw new Error("capture context has no client library");
         // lifetime from Visa's own iat/exp, counted on this device's clock, so a skewed device clock cannot
         // make fresh fields look expired
-        const expiresMs = Date.now() + (Number(payload.exp) - Number(payload.iat)) * 1000;
+        const life = Number(payload.exp) - Number(payload.iat);
+        const expiresMs = Date.now() + (Number.isFinite(life) && life > 0 ? life : 14 * 60) * 1000; // Visa documents 15 min
         await loadLibrary(lib.clientLibrary, lib.clientLibraryIntegrity);
         if (dead) return;
         if (!window.Flex) throw new Error("Visa's card-field library did not start");
@@ -68,7 +71,7 @@ export function CardFields({ onState }: { onState: (s: CardState) => void }) {
         const tokenize: Tokenize = () => new Promise<string>((ok, bad) => {
           if (dead) return bad(new Error("card fields were closed; try again"));
           // Visa's capture context is short-lived: past its expiry every token fails, so fetch fresh fields
-          if (Number.isFinite(expiresMs) && Date.now() > expiresMs - 30_000) {
+          if (Date.now() > expiresMs - 30_000) {
             setState("loading");
             setGen((g) => g + 1);
             return bad(new Error("The card fields expired. They have been reloaded: type the card again."));

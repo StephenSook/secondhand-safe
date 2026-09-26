@@ -101,14 +101,6 @@ function recallVerdict(entry: Entry, field: "model" | "upc", value: string, batc
     reason: `${field === "model" ? "Model" : "UPC"} ${entry.value} matches CPSC recall ${r.recallNumber}: ${r.title}` };
 }
 
-/** The brand as whole words ("Delta" in "Delta Enterprise crib"), never inside another word ("place" in "replacement"). */
-function namesBrand(text: string, brand: string): boolean {
-  const b = brand.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  if (b.length < 3) return false;
-  const words = text.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-  return ` ${words} `.includes(` ${b} `);
-}
-
 const pick = (entries: Entry[]) => [...entries].sort((a, b) => b.recall.recallDate.localeCompare(a.recall.recallDate))[0];
 
 export function checkLabel(input: LabelInput): Verdict {
@@ -120,17 +112,14 @@ export function checkLabel(input: LabelInput): Verdict {
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
     if (hit) {
-      // A short all-digit model number ("4340") is shared across brands, so it only counts as the recalled product
-      // when the label or listing names that recall's brand. Otherwise it waits for a person: never a reversal.
+      // A short all-digit model number ("4340") is shared across brands, and brand names are often ordinary words
+      // ("Summer", "Gap", "Place") that listing text mentions anyway. So it never moves money on its own: the hold
+      // waits for a person to confirm the brand on the label.
       if (/^\d{4,6}$/.test(fold(input.model))) {
-        const branded = hit.filter((e) => e.recall.brands.some((b) => namesBrand(text, b)));
-        if (!branded.length) {
-          const e = pick(hit);
-          const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";
-          return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "model", value: input.model, recallValue: e.value }, asOf: INDEX_AS_OF,
-            reason: `Model ${e.value} appears in ${e.recall.source} recall ${e.recall.recallNumber} (${brands}). A number this short is shared across brands: confirm the brand on the label.` };
-        }
-        return recallVerdict(pick(branded), "model", input.model, input.batch, input.date);
+        const e = pick(hit);
+        const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";
+        return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "model", value: input.model, recallValue: e.value }, asOf: INDEX_AS_OF,
+          reason: `Model ${e.value} appears in ${e.recall.source} recall ${e.recall.recallNumber} (${brands}). A number this short is shared across brands: confirm the brand on the label before any money moves.` };
       }
       return recallVerdict(pick(hit), "model", input.model, input.batch, input.date);
     }

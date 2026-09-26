@@ -43,8 +43,9 @@ Two seeded random samples of 20 recalls each, read against the full CPSC descrip
 - Recalls with any identifier rose from 449 (regex only) to 822.
 - A spot check of the new values found two shapes that needed rules, both now in place:
   1. Short all-digit model numbers ("4340", listed by Delta's drop-side crib recalls). They are shared
-     across brands, so the matcher returns NEEDS_CHECK naming the brand unless the label or listing text
-     names it (tests/match.test.ts).
+     across brands, and brand names are often ordinary words ("Summer", "Gap", "Place") that listing text
+     contains anyway, so text cannot confirm the brand. A match on one is always NEEDS_CHECK, naming the
+     brand, and never moves money (tests/match.test.ts; found by two review rounds).
   2. Batch values that are production-date phrases ("production dates 01/06 thru 11/07"). They can never
      equal a printed batch code, so a model hit on such a recall is NEEDS_CHECK (the hold waits for a
      person). That is conservative, never a wrong reversal.

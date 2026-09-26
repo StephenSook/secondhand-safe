@@ -99,24 +99,20 @@ describe("legal rules (PLAN D3)", () => {
   });
 });
 
-describe("short all-digit model numbers need the brand (real Delta drop-side crib recalls list model 4340)", () => {
-  it("4340 with no brand waits for a person, never reverses", () => {
+describe("short all-digit model numbers never move money on their own (real Delta drop-side crib recalls list 4340)", () => {
+  it("4340 with no brand waits for a person and names the brand", () => {
     const v = checkLabel({ model: "4340" });
     expect(v.kind).toBe("NEEDS_CHECK");
     expect(v.reason).toMatch(/Delta/);
     expect(v.reason).toMatch(/confirm the brand/);
   });
-  it("4340 with the brand on the label reaches the recall's own rules (here: its production dates)", () => {
-    const v = checkLabel({ model: "4340", text: "Delta Enterprise crib" });
-    expect(v.reason).not.toMatch(/confirm the brand/);
-    expect(v.recall?.brands).toContain("Delta");
-    expect(v.reason).toMatch(/production dates/);
+  it("brand words in ordinary listing text do not turn a short number into a reversal", () => {
+    for (const [model, text] of [["2158", "pickup at my place"], ["02800", "used one summer"], ["8050", "love the simplicity"],
+      ["700452", "small gap in seam"], ["4340", "Delta Enterprise crib"]]) {
+      expect(checkLabel({ model, text }).kind, `${model} / ${text}`).toBe("NEEDS_CHECK");
+    }
   });
-  it("a brand inside another word does not count (CPSC 13286 brand PLACE, model 2158)", () => {
-    expect(checkLabel({ model: "2158", text: "replacement cover included" }).kind).toBe("NEEDS_CHECK");
-    expect(checkLabel({ model: "2158", text: "gap between slats, reinforced, burgundy" }).kind).toBe("NEEDS_CHECK");
-  });
-  it("4340 on another brand's label still waits", () => {
-    expect(checkLabel({ model: "4340", text: "Graco pack n play" }).kind).toBe("NEEDS_CHECK");
+  it("alphanumeric model numbers still match directly (BHC001 batch 202408)", () => {
+    expect(checkLabel({ model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH");
   });
 });

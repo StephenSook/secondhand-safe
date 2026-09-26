@@ -76,9 +76,9 @@ TODO (Stephen): one or two sentences on why this one matters to you.
   exposed it.
 - Payment states: an adversarial review found that a failed or replayed settlement could be shown as HELD.
   Now anything Visa did not confirm is shown as refused or unknown, never as a result.
-- Gemini's recall pass added model numbers like "4340" that several brands use. A match on a short number
-  now waits for a person unless the label names the recalled brand, and that brand has to be a whole word
-  ("replacement" does not count as the brand "Place").
+- Gemini's recall pass added model numbers like "4340" that several brands use. Our first fix trusted the
+  brand if the listing named it, and review found brands like "Summer" and "Gap" in ordinary listing text.
+  Now a match on a short number never moves money: the hold waits for a person to check the brand.
 
 ## Accomplishments that we're proud of
 
