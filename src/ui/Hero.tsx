@@ -56,7 +56,7 @@ export function Hero({ recalls }: { recalls: number }) {
             <p data-reveal className="hero-sub mt-6 max-w-[34em] text-lg font-semibold text-ink/85">
               Buying a used crib or car seat? Your Visa payment is <b>held</b>, not sent. At pickup, your phone
               reads the label and scans the barcode against {recalls.toLocaleString("en-US")} real CPSC
-              recalls and the banned product types. Clean: the seller gets paid. Recalled or banned: the hold is
+              and NHTSA recalls and the banned product types. Clean: the seller gets paid. Recalled or banned: the hold is
               reversed and nobody takes the risk home.
             </p>
             <div data-reveal className="hero-cta mt-8 flex flex-wrap gap-3">

@@ -49,7 +49,7 @@ async function detectBarcode(file: Blob): Promise<string | undefined> {
 export function PickupScanner() {
   const [health, setHealth] = useState<Health | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
-  const [fields, setFields] = useState({ model: "", batch: "", upc: "", text: "" });
+  const [fields, setFields] = useState({ model: "", batch: "", date: "", upc: "", text: "" });
   const [label, setLabel] = useState<LabelRead | null>(null);
   const [labelMsg, setLabelMsg] = useState("");
   const [cls, setCls] = useState<ClassifyResult | null>(null);
@@ -139,6 +139,7 @@ export function PickupScanner() {
       setLabel(l);
       next.model = l.model ?? next.model;
       next.batch = l.batch ?? next.batch;
+      next.date = l.date ?? next.date;
       next.upc = upc ?? l.upc ?? next.upc;
       next.text = [l.brand, l.productType].filter(Boolean).join(" ");
       if (!l.readable) setLabelMsg("The label was not legible in this photo. Retake it closer, or type the model number.");
@@ -236,15 +237,15 @@ export function PickupScanner() {
         </div>
         {labelMsg && <p className="mt-4 rounded-xl bg-amber-soft p-3 font-semibold">{labelMsg}</p>}
         {clsMsg && <p className="mt-3 rounded-xl bg-aqua-soft p-3 font-semibold">{clsMsg}</p>}
-        <form className="mt-6 grid sm:grid-cols-3 gap-3" onSubmit={(e) => { e.preventDefault(); check(); }}>
-          {(["model", "batch", "upc"] as const).map((k) => (
+        <form className="mt-6 grid sm:grid-cols-2 gap-3" onSubmit={(e) => { e.preventDefault(); check(); }}>
+          {(["model", "batch", "date", "upc"] as const).map((k) => (
             <label key={k} className="block text-sm font-bold capitalize">{k === "upc" ? "UPC" : k}
               <input value={fields[k]} onChange={(e) => setFields({ ...fields, [k]: e.target.value })} autoComplete="off"
                 inputMode={k === "upc" ? "numeric" : "text"}
                 className="mt-1 w-full rounded-xl border-2 border-ink px-3 py-2.5 font-mono uppercase focus:outline-none focus:ring-4 focus:ring-amber" />
             </label>
           ))}
-          <div className="sm:col-span-3"><SquashButton type="submit" disabled={!!busy} accent="var(--green)">Check what the label says</SquashButton></div>
+          <div className="sm:col-span-2"><SquashButton type="submit" disabled={!!busy} accent="var(--green)">Check what the label says</SquashButton></div>
         </form>
       </div>
 

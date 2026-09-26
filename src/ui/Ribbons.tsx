@@ -1,6 +1,6 @@
 /** Two crossing tilted marquee bands, the three states as a chant. CSS only; paused under reduced motion. */
 const A = "HELD until the camera has seen it ✦ CAPTURED when the label is clean ✦ REVERSED when it is recalled ✦ ";
-const B = "Checked against CPSC recalls ✦ inclined sleepers ✦ crib bumpers ✦ drop-side cribs ✦ never just 'safe' ✦ ";
+const B = "Checked against CPSC and NHTSA recalls ✦ inclined sleepers ✦ crib bumpers ✦ drop-side cribs ✦ never just 'safe' ✦ ";
 
 function Band({ text, className, reverse }: { text: string; className: string; reverse?: boolean }) {
   return (

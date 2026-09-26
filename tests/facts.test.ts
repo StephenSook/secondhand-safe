@@ -10,6 +10,9 @@ describe("README numbers come from FACTS.json", () => {
   it("recall index", () => {
     expect(row("CPSC recalls fetched")).toContain(`${facts.recallIndex.recallsFetched} / ${facts.recallIndex.nurseryRecalls}`);
   });
+  it("NHTSA child seats", () => {
+    expect(row("NHTSA child car seat recall campaigns")).toContain(String(facts.recallIndex.nhtsaChildSeatCampaigns));
+  });
   it("listings scanned", () => {
     expect(row("Real marketplace listings scanned")).toContain(String(facts.scanned));
   });

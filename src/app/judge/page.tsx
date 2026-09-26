@@ -40,7 +40,7 @@ export default async function JudgePage() {
           <p className="hand text-3xl text-ink/70 -rotate-2">no login, no key, all live</p>
           <h1 className="display text-[clamp(2.8rem,6vw,6rem)] mt-2">Judges: three minutes</h1>
           <p className="mt-4 max-w-[40em] text-lg font-semibold">
-            Recall index: {INDEX_SIZE.recalls.toLocaleString("en-US")} CPSC nursery and children&apos;s recalls, {INDEX_SIZE.models.toLocaleString("en-US")} model
+            Recall index: {INDEX_SIZE.recalls.toLocaleString("en-US")} CPSC nursery and NHTSA child car seat recalls, {INDEX_SIZE.models.toLocaleString("en-US")} model
             numbers, as of {INDEX_AS_OF}. Health: <a className="underline font-bold" href="/api/health">/api/health</a>.
           </p>
           <ol className="mt-12 grid gap-5">

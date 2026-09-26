@@ -13,6 +13,7 @@ const SAMPLES = [
   { label: "Same model, other batch", model: "BHC001", batch: "202511", note: "batch rule" },
   { label: "AirClub bassinet", model: "QX-831", batch: "", note: "CPSC 26-342" },
   { label: "OCR slip: BHCOO1", model: "BHCOO1", batch: "202408", note: "O vs 0" },
+  { label: "Evenflo Titan 65 car seat", model: "3712198", batch: "", date: "07/2025", note: "NHTSA 26C001000" },
   { label: "No recall on file", model: "ZZT9Q41X", batch: "", note: "never 'safe'" },
 ];
 
@@ -31,18 +32,19 @@ export function LiveCheck() {
   const [model, setModel] = useState("");
   const [batch, setBatch] = useState("");
   const [upc, setUpc] = useState("");
+  const [date, setDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<{ verdict: Verdict; ms: number } | null>(null);
   const [err, setErr] = useState("");
   const stampRef = useRef<HTMLSpanElement>(null);
 
-  async function run(m = model, b = batch, u = upc) {
+  async function run(m = model, b = batch, u = upc, d = date) {
     setBusy(true);
     setErr("");
     const t0 = clock();
     try {
       const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: m, batch: b, upc: u }) });
+        body: JSON.stringify({ model: m, batch: b, upc: u, date: d }) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = (await r.json()) as { verdict: Verdict };
       setRes({ verdict: j.verdict, ms: Math.round(clock() - t0) });
@@ -85,7 +87,11 @@ export function LiveCheck() {
                 <input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder="optional" autoComplete="off"
                   className="mt-1 w-full rounded-xl border-2 border-ink px-4 py-3 font-mono text-lg uppercase focus:outline-none focus:ring-4 focus:ring-amber" />
               </label>
-              <label className="block font-bold sm:col-span-2">UPC (barcode scanners type here)
+              <label className="block font-bold">Manufacture date
+                <input value={date} onChange={(e) => setDate(e.target.value)} placeholder="car seats: e.g. 07/2025" autoComplete="off"
+                  className="mt-1 w-full rounded-xl border-2 border-ink px-4 py-3 font-mono text-lg uppercase focus:outline-none focus:ring-4 focus:ring-amber" />
+              </label>
+              <label className="block font-bold">UPC (barcode scanners type here)
                 <input value={upc} onChange={(e) => setUpc(e.target.value)} placeholder="scan or type 12 digits" inputMode="numeric" autoComplete="off"
                   className="mt-1 w-full rounded-xl border-2 border-ink px-4 py-3 font-mono text-lg focus:outline-none focus:ring-4 focus:ring-amber" />
               </label>
@@ -97,7 +103,7 @@ export function LiveCheck() {
             <div className="mt-2 flex flex-wrap gap-2">
               {SAMPLES.map((s) => (
                 <button key={s.label} type="button"
-                  onClick={() => { setModel(s.model); setBatch(s.batch); setUpc(""); run(s.model, s.batch, ""); }}
+                  onClick={() => { const d = "date" in s ? s.date ?? "" : ""; setModel(s.model); setBatch(s.batch); setUpc(""); setDate(d); run(s.model, s.batch, "", d); }}
                   className="rounded-full border-2 border-ink bg-amber-soft px-3 py-1.5 text-sm font-bold hover:bg-amber hover:-rotate-2 transition-transform">
                   {s.label} <span className="text-ink/50">· {s.note}</span>
                 </button>

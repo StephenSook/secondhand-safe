@@ -46,7 +46,7 @@ def main():
             "ordinaryHeldOut": sum(ordinary),
             "embeddings": metrics["train_info"]["clip"].get("embeddings"),
         },
-        "recallIndex": {k: stats[k] for k in ("recallsFetched", "nurseryRecalls", "withAnyIdentifier", "identifiers")},
+        "recallIndex": {k: stats.get(k) for k in ("recallsFetched", "nurseryRecalls", "nhtsaChildSeatCampaigns", "withAnyIdentifier", "identifiers")},
     }
     os.makedirs(os.path.join(ROOT, "docs"), exist_ok=True)
     json.dump(facts, open(os.path.join(ROOT, "docs", "FACTS.json"), "w"), indent=1)
