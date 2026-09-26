@@ -11,6 +11,7 @@ import type { LabelRead } from "@/server/ml/label";
 import type { LookAlike } from "@/server/db/vector";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
+import { WatchThisItem } from "./WatchThisItem";
 import { setupGsap, gsap, prefersReducedMotion } from "./motion/gsap";
 
 type Health = { integrations: Record<string, boolean> };
@@ -432,6 +433,7 @@ export function PickupScanner() {
                 {deal.passportPath && <><dt>passport</dt><dd><a href={deal.passportPath} className="underline font-bold">Solana devnet record</a></dd></>}
                 {deal.passportError && <><dt>passport</dt><dd>{deal.passportError}</dd></>}
               </dl>
+              {deal.status === "CAPTURED" && deal.token && <WatchThisItem token={deal.token} />}
               {health?.integrations?.mongo && (
                 <div className="mt-4 flex items-center gap-3 rounded-2xl border-2 border-ink bg-paper text-ink p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}

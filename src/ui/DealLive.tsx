@@ -11,6 +11,7 @@ import { LIVE_LABEL, useLiveRefresh } from "./useLiveRefresh";
 type Deal = {
   dealId: string; listing: string; amountUsd: number; status: string; card: string | null; agent: string | null;
   createdAt: string; updatedAt: string; events: { at: string; status: string; note: string }[];
+  postSaleRecall?: { recallNumber: string; title: string; url: string; at: string } | null;
   verdict?: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null;
 };
 const TONE: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand", RELEASED: "bg-aqua", LAPSED: "bg-sand" };
@@ -43,6 +44,11 @@ export function DealLive({ dealId }: { dealId: string }) {
       <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${TONE[d.status] ?? "bg-sand"}`}>
         <p className="text-sm font-extrabold tracking-wider">FROM THE DEAL RECORD · <span data-testid="live-mode">{LIVE_LABEL[mode].toUpperCase()}</span></p>
         <p className="display text-5xl mt-1">{WORD[d.status] ?? d.status}</p>
+        {d.postSaleRecall && (
+          <p role="alert" className="mt-3 rounded-xl border-2 border-ink bg-red text-paper p-3 font-bold">
+            Recall announced after this sale: <a href={d.postSaleRecall.url} target="_blank" rel="noreferrer" className="underline">CPSC {d.postSaleRecall.recallNumber}</a>. {d.postSaleRecall.title}
+          </p>
+        )}
         <p className="display text-2xl mt-1">${d.amountUsd.toFixed(2)}</p>
         <p className="font-semibold opacity-85">{d.listing}</p>
         {d.verdict && <p className="mt-3 font-bold">{d.verdict.reason}</p>}

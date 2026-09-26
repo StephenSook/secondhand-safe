@@ -5,6 +5,8 @@ import { CATALOG } from "@/server/shop/catalog";
 import { DEMO_TABLE } from "@/core/demoTable";
 
 const KNOWN_TITLES = new Set<string>([...DEMO_TABLE.map((d) => d.label), ...CATALOG.map((l) => l.title.slice(0, 80))]);
+/** Listing text safe to show publicly: only text we wrote (catalog titles, demo-table items), else a placeholder. */
+export const publicListing = (t: string) => (KNOWN_TITLES.has(t) ? t : "A listing");
 
 /**
  * Deal records in MongoDB Atlas: the hold, the pickup decision and the settlement, as a timeline. It powers the
@@ -24,7 +26,12 @@ export interface DealRecord {
   createdAt: string; updatedAt: string; events: DealEvent[];
   verdict?: { kind: string; reason: string; recall?: string | null };
   passportPath?: string | null;
+  /** what the pickup scan read off the label (model numbers, not personal data); kept for the recall watch */
+  label?: SaleLabel | null;
+  /** a recall that matched this sale AFTER it was captured (recall watch, src/server/watch/) */
+  postSaleRecall?: { recallNumber: string; title: string; url: string; at: string } | null;
 }
+export interface SaleLabel { model: string | null; batch: string | null; date: string | null; upc: string | null }
 
 async function deals(): Promise<Collection<DealRecord> | null> {
   const db = await getDb();
@@ -56,7 +63,7 @@ export function recordHold(d: { dealId: string; listing: string; amountUsd: numb
   });
 }
 
-export function recordSettlement(dealId: string, s: { status: DealStatus; verdict: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null }) {
+export function recordSettlement(dealId: string, s: { status: DealStatus; verdict: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null; label?: SaleLabel | null }) {
   return safely("recordSettlement", async () => {
     const c = await deals();
     if (!c) return false;
@@ -72,6 +79,8 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
       status: { $cond: [final, "$status", s.status] },
       verdict: { $cond: [final, "$verdict", { $literal: s.verdict }] },
       passportPath: { $cond: [final, "$passportPath", s.passportPath ?? null] },
+      // the label is kept only for a sale (the recall watch re-checks it later)
+      label: { $cond: [final, "$label", { $literal: s.status === "CAPTURED" ? (s.label ?? null) : null }] },
       updatedAt: at,
       events: { $concatArrays: ["$events", [{ $literal: { at, status: s.status, note } }]] },
     } }]);
@@ -162,5 +171,28 @@ export function recordSweep(dealId: string, status: "RELEASED" | "LAPSED" | "REF
     const at = new Date().toISOString();
     const r = await c.updateOne({ _id: dealId, status: "HELD" }, { $set: { status, updatedAt: at }, $push: { events: { at, status, note } } });
     return r.modifiedCount === 1;
+  });
+}
+
+/** Captured sales with a label to re-check (recall watch). */
+export function watchedSales(limit = 1000) {
+  return safely("watchedSales", async () => {
+    const c = await deals();
+    if (!c) return null;
+    return c.find({ status: "CAPTURED", $or: [{ "label.model": { $type: "string" } }, { "label.upc": { $type: "string" } }] },
+      { projection: { _id: 1, listing: 1, label: 1, postSaleRecall: 1, updatedAt: 1 }, sort: { updatedAt: -1 }, limit }).toArray();
+  }, 6000);
+}
+
+/** Flags a captured sale with a recall announced after it (once per recall); true when newly flagged. */
+export function flagPostSaleRecall(dealId: string, r: { recallNumber: string; title: string; url: string }) {
+  return safely("flagPostSaleRecall", async () => {
+    const c = await deals();
+    if (!c) return false;
+    const at = new Date().toISOString();
+    const res = await c.updateOne({ _id: dealId, status: "CAPTURED", "postSaleRecall.recallNumber": { $ne: r.recallNumber } },
+      { $set: { postSaleRecall: { ...r, at }, updatedAt: at },
+        $push: { events: { at, status: "CAPTURED", note: `Recall announced after the sale: CPSC ${r.recallNumber}. The buyer was notified.` } } });
+    return res.modifiedCount === 1;
   });
 }
