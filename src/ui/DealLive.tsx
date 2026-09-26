@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LIVE_LABEL, useLiveRefresh } from "./useLiveRefresh";
 
 /**
- * The seller's view of one deal, read live from MongoDB Atlas every 3 seconds: both people at the curb see the
+ * The seller's view of one deal, re-read from MongoDB Atlas when its change stream reports a change to this deal
+ * (every 3 seconds when the stream is not available): both people at the curb see the
  * same status, and the seller sees WHY a hold was reversed (the recall or the banned type), not just that it was.
  */
 type Deal = {
@@ -17,30 +19,29 @@ const WORD: Record<string, string> = { HELD: "Held at Visa", CAPTURED: "Paid to 
 export function DealLive({ dealId }: { dealId: string }) {
   const [d, setD] = useState<Deal | null>(null);
   const [err, setErr] = useState("");
-  useEffect(() => {
-    let live = true;
-    const started = Date.now();
-    const load = async () => {
-      try {
-        const r = await fetch(`/api/deals/${dealId}`, { cache: "no-store" });
-        const j = await r.json();
-        if (!live) return;
-        // the record is written just after Visa answers, so a first look can arrive before it: keep polling
-        if (r.status === 404) { setErr(Date.now() - started < 20_000 ? "Waiting for this deal's record…" : j.error ?? "No record of this deal."); return; }
-        if (!r.ok) { setErr(j.error ?? `HTTP ${r.status}`); return; }
-        setErr(""); setD(j);
-      } catch { if (live) setErr("Could not reach the deal store; retrying."); }
-    };
-    void load();
-    const t = window.setInterval(load, 3000);
-    return () => { live = false; window.clearInterval(t); };
+  const alive = useRef(true);
+  const seq = useRef(0);
+  const started = useRef(0);
+  useEffect(() => { alive.current = true; started.current = Date.now(); return () => { alive.current = false; }; }, [dealId]);
+  const load = useCallback(async () => {
+    const n = ++seq.current;
+    try {
+      const r = await fetch(`/api/deals/${dealId}`, { cache: "no-store" });
+      const j = await r.json();
+      if (!alive.current || n !== seq.current) return; // a newer read has started: never show an older answer over it
+      // the record is written just after Visa answers, so a first look can arrive before it: keep polling
+      if (r.status === 404) { setErr(Date.now() - started.current < 20_000 ? "Waiting for this deal's record…" : j.error ?? "No record of this deal."); return; }
+      if (!r.ok) { setErr(j.error ?? `HTTP ${r.status}`); return; }
+      setErr(""); setD(j);
+    } catch { if (alive.current && n === seq.current) setErr("Could not reach the deal store; retrying."); }
   }, [dealId]);
+  const mode = useLiveRefresh(`/api/stream?deal=${encodeURIComponent(dealId)}`, load);
 
   if (!d) return <p className="hand text-3xl mt-6">{err || "loading the deal…"}</p>;
   return (
     <div aria-live="polite" className="grid gap-5 mt-6">
       <div className={`rounded-[2rem] border-[3px] border-ink p-6 ${TONE[d.status] ?? "bg-sand"}`}>
-        <p className="text-sm font-extrabold tracking-wider">LIVE FROM THE DEAL RECORD · UPDATES EVERY 3 S</p>
+        <p className="text-sm font-extrabold tracking-wider">FROM THE DEAL RECORD · <span data-testid="live-mode">{LIVE_LABEL[mode].toUpperCase()}</span></p>
         <p className="display text-5xl mt-1">{WORD[d.status] ?? d.status}</p>
         <p className="display text-2xl mt-1">${d.amountUsd.toFixed(2)}</p>
         <p className="font-semibold opacity-85">{d.listing}</p>
