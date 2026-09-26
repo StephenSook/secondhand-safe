@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Figtree, Caveat } from "next/font/google";
+import localFont from "next/font/local";
 import { SmoothScroll } from "@/ui/motion/SmoothScroll";
 import { BRAND } from "@/core/brand";
 import "./globals.css";
 
-const display = Bricolage_Grotesque({ variable: "--font-display", subsets: ["latin"], weight: ["700", "800"] });
-const body = Figtree({ variable: "--font-body", subsets: ["latin"], weight: ["500", "600", "700", "800"] });
-const hand = Caveat({ variable: "--font-hand", subsets: ["latin"], weight: ["500", "600", "700"] });
+// Self-hosted (SIL Open Font License, latin variable files from Google Fonts). next/font/google downloads the
+// fonts during every build, and a failed download failed CI and could fail a production deploy.
+const display = localFont({ src: "./fonts/bricolage-grotesque-latin.woff2", variable: "--font-display", weight: "700 800", display: "swap" });
+const body = localFont({ src: "./fonts/figtree-latin.woff2", variable: "--font-body", weight: "500 800", display: "swap" });
+const hand = localFont({ src: "./fonts/caveat-latin.woff2", variable: "--font-hand", weight: "500 700", display: "swap" });
 
 export const metadata: Metadata = {
   title: `${BRAND}: the money waits for the camera`,
