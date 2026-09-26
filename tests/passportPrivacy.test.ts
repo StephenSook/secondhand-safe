@@ -5,10 +5,17 @@ const VISA_CAPTURE = "7300000000000000000001";
 const AUTH_ID = "7200000000000000000999";
 vi.mock("@/server/visa/creds", () => ({ visaCreds: () => ({ secret: "test-secret" }) }));
 vi.mock("@/server/deals/token", () => ({ verifyDealToken: () => ({ dealId: "shs-0123abcd-4567", authId: AUTH_ID, amountUsd: 40, iat: 1 }) }));
-vi.mock("@/server/deals/settle", () => ({ settle: vi.fn(async () => ({ status: "CAPTURED", visa: { id: VISA_CAPTURE, status: "PENDING", httpStatus: 201 } })) }));
+vi.mock("@/server/deals/settle", async (orig) => ({ ...(await orig<typeof import("@/server/deals/settle")>()),
+  settle: vi.fn(async () => ({ status: "CAPTURED", visa: { id: VISA_CAPTURE, status: "PENDING", httpStatus: 201 } })) }));
+// the one-settlement-per-deal claim (main's kiosk work) runs on an in-memory store here instead of Atlas
+vi.mock("@/server/deals/claim", async (orig) => {
+  const real = await orig<typeof import("@/server/deals/claim")>();
+  return { ...real, mongoClaims: async () => real.memoryClaims() };
+});
 vi.mock("@/server/recalls/match", () => ({ checkLabel: () => ({ kind: "NO_MATCH", reason: "no recall names this model", asOf: "2026-09-20" }) }));
 vi.mock("@/server/solana/memo", async (orig) => ({ ...(await orig<typeof import("@/server/solana/memo")>()), anchor: vi.fn(async () => "5".repeat(88)) }));
-vi.mock("@/server/deals/store", async (orig) => ({ ...(await orig<typeof import("@/server/deals/store")>()), recordSettlement: vi.fn(async () => true) }));
+vi.mock("@/server/deals/store", async (orig) => ({ ...(await orig<typeof import("@/server/deals/store")>()), recordSettlement: vi.fn(async () => true),
+  getDeal: vi.fn(async () => ({ state: "missing" as const })) })); // the deal is not final yet, so the claim proceeds
 vi.mock("@/server/solana/mints", () => ({ mintPassport: vi.fn(async () => ({ state: "minted" })) }));
 vi.mock("@vercel/functions", () => ({ waitUntil: (p: Promise<unknown>) => { void p; } }));
 import { POST } from "@/app/api/pickup/route";
