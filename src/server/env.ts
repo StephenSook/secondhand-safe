@@ -37,6 +37,9 @@ const schema = z.object({
   MONGODB_DB: z.string().default("lullabuy"),
   GEMINI_API_KEY: z.string().min(1),
   ELEVENLABS_API_KEY: z.string().optional(),
+  // voice agent (PLAN 5.6): optional, /api/voice-agent/* answer 503 without them
+  ELEVENLABS_AGENT_ID: z.string().optional(),
+  ELEVENLABS_TOOL_SECRET: z.string().optional(),
   TAP_AGENT_PRIVATE_KEY_HEX: z.string().length(64),
   TAP_AGENT_KEY_ID: z.string().min(1),
   SOLANA_RPC_URL: z.string().default("https://api.devnet.solana.com"),

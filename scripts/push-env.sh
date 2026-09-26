@@ -17,6 +17,9 @@ pairs=(
   # GEMINI_API_KEY is not pushed from here: production uses keyless Workload Identity Federation (a "wif:..."
   # config string set once by hand); the keychain key bills a depleted prepay account.
   "ELEVENLABS_API_KEY=elevenlabs-api-key"
+  # voice agent (PLAN 5.6): from .env.local only; the id comes from scripts/elevenlabs-agent.mjs
+  "ELEVENLABS_AGENT_ID="
+  "ELEVENLABS_TOOL_SECRET="
   "MONGODB_URI="
   "MONGODB_DB="
   "VISA_MERCHANT_ID="
