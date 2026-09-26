@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Nav } from "@/ui/Nav";
 import { BRAND } from "@/core/brand";
+import { AutoRefresh } from "@/ui/AutoRefresh";
 import { readPassport, recordHash, judgePassport, passportSigner } from "@/server/solana/memo";
 
 export const metadata: Metadata = { title: `Item passport: ${BRAND}` };
@@ -40,7 +41,8 @@ export default async function PassportPage({ params, searchParams }: { params: P
             <p className="text-sm font-extrabold tracking-wider">SOLANA DEVNET · MEMO</p>
             {!valid && <p className="display text-3xl mt-1">Not a transaction signature</p>}
             {valid && rpcError && <p className="display text-3xl mt-1">Could not reach Solana devnet right now. Reload in a moment.</p>}
-            {valid && !rpcError && !tx && <p className="display text-3xl mt-1">Not found on devnet (yet)</p>}
+            {valid && !rpcError && !tx && <p className="display text-3xl mt-1">Waiting for devnet to confirm it…</p>}
+            {valid && (rpcError || !tx) && <AutoRefresh />}
             {tx && (
               <>
                 <p className="display text-3xl mt-1">{headline}</p>

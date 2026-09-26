@@ -75,8 +75,8 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
 4. **Both sides see it.** Every hold and settlement is recorded in MongoDB Atlas; the seller scans a QR on
    the buyer's screen and watches the same deal live (`/deal/<id>`), and `/board` shows every deal.
 5. **Capture or reverse.** A captured sale gets an item passport: the SHA-256 of the pickup record written to
-   Solana devnet in a Memo transaction, which `/passport/<signature>` reads back and recomputes (live once the
-   devnet wallet is funded).
+   Solana devnet in a Memo transaction, which `/passport/<signature>` reads back and recomputes: it checks the
+   signer is our passport key, that the transaction succeeded, and that the hash matches.
 
 ## Repo map
 

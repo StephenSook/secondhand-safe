@@ -55,6 +55,11 @@ TODO (Stephen): one or two sentences on why this one matters to you.
   listings. It never decides what is allowed; the recall index, our model and our own review do, and the
   server refuses to let the agent buy a red listing. In production Gemini runs with no stored key: Vercel's
   identity token is exchanged with Google Workload Identity Federation for a short-lived token.
+- **Solana item passport:** when a sale captures, a Memo transaction on Solana devnet stores the SHA-256 of the
+  pickup record (no personal data on chain). The passport page reads it back and checks the signer, the
+  transaction and the hash, so anyone can verify what the check said at the time of sale.
+- **MongoDB Atlas:** every hold and settlement is recorded; the seller scans a QR on the buyer's phone and
+  watches the same deal live, and a deal board shows every deal.
 - **Gemini:** Gemini 3.5 Flash reads the product label photo into brand, model, batch and date with a box for
   each field. It also read all 1137 recall notices for model numbers, batches and UPCs. A value is kept only
   if it appears word for word in that recall's text, which raised the recalls we can match on from 449 to 822.
@@ -114,8 +119,7 @@ DRAFT (written from what actually happened this weekend; Stephen and Tylin, rewr
 ## What's next
 
 - Seller-side confirmation of the scan (today the buyer's device reports it).
-- A deal board on MongoDB Atlas. (The Solana item passport is built and waiting on devnet SOL: TODO, claim it
-  only if a real passport transaction exists on submission day.)
+- Visa Direct payouts to the seller's card, and seller-side confirmation on their own device.
 - Bring the check to Facebook Marketplace handoffs, where the problem is worst.
 
 ## Try it
