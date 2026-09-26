@@ -10,28 +10,28 @@ text by Gemini, product type by our own model running in the browser) and checke
 nursery and children's recall, NHTSA's child car seat recalls, plus the product types that are banned outright. Clean: the hold is
 captured. Recalled or banned: the hold is reversed, and nobody takes the risk home.
 
-Live: **https://secondhand-safe-web.vercel.app** · Judges: [/judge](https://secondhand-safe-web.vercel.app/judge)
+Live: **https://lullabuy.tech** · Judges: [/judge](https://lullabuy.tech/judge)
 
 ## Try it without logging in
 
 ```bash
 # CPSC recall 26-061: Harppa high chair, model BHC001, recalled only in batch 202408
-curl "https://secondhand-safe-web.vercel.app/api/check?model=BHC001&batch=202408"
+curl "https://lullabuy.tech/api/check?model=BHC001&batch=202408"
 
 # Same model, a different batch: KEEP HELD (the recall names one batch)
-curl "https://secondhand-safe-web.vercel.app/api/check?model=BHC001&batch=202511"
+curl "https://lullabuy.tech/api/check?model=BHC001&batch=202511"
 
 # The numbers below, recomputed from the artifacts
-curl https://secondhand-safe-web.vercel.app/api/stats
+curl https://lullabuy.tech/api/stats
 
 # The same check as an MCP tool, for any AI shopping agent (Streamable HTTP, stateless)
-curl -s https://secondhand-safe-web.vercel.app/api/mcp -H 'content-type: application/json' \
+curl -s https://lullabuy.tech/api/mcp -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_check","arguments":{"model":"BHC001","batch":"202408"}}}'
 ```
 
 MCP config for a client that speaks Streamable HTTP:
-`{"mcpServers":{"lullabuy":{"type":"http","url":"https://secondhand-safe-web.vercel.app/api/mcp"}}}`
+`{"mcpServers":{"lullabuy":{"type":"http","url":"https://lullabuy.tech/api/mcp"}}}`
 
 ## What is measured (all from [`docs/FACTS.json`](docs/FACTS.json), written by `ml/facts.py`)
 

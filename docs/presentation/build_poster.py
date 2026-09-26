@@ -13,7 +13,7 @@ import qrcode.image.svg
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-BASE = "https://secondhand-safe-web.vercel.app"
+BASE = "https://lullabuy.tech"
 
 
 def qr(url):
