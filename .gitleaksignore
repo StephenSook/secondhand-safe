@@ -1,0 +1,6 @@
+# Hand-verified false positives (commit:file:rule:line). tests/savedCard.test.ts line 16 held a Visa SANDBOX
+# customer-token id from the public sample merchant, flagged as generic-api-key because the line also says
+# "secret". It was replaced with an obviously fake id; these entries cover the commits already in history.
+fcb64a800c2c3ed4bb0d2e3685c90de7884fe789:tests/savedCard.test.ts:generic-api-key:16
+37a92d43cb955cac4afe477df68afe20713f9915:tests/savedCard.test.ts:generic-api-key:16
+36f1769d063c1744ced23f243bf50c26a1709984:tests/savedCard.test.ts:generic-api-key:16
