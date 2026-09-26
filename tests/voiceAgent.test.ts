@@ -152,6 +152,9 @@ describe("scripts/elevenlabs-agent.mjs --dry-run", () => {
     const agent = bodies[4];
     expect(agent.name).toBe("Lullabuy shopping agent");
     expect(agent.conversation_config.tts.voice_id).toBe("EXAVITQu4vr4xnSDxMaL");
+    // English agents must use an English-only model (HTTP 400 otherwise); Spanish switches to the multilingual one
+    expect(agent.conversation_config.tts.model_id).toBe("eleven_flash_v2");
+    expect(agent.conversation_config.language_presets.es.overrides.tts.model_id).toBe("eleven_flash_v2_5");
     expect(agent.platform_settings.auth.allowlist.map((a: { hostname: string }) => a.hostname))
       .toEqual(["lullabuy.tech", "www.lullabuy.tech", "secondhand-safe-web.vercel.app"]); // no localhost in production
     // a conversation ends itself, so an abandoned tab or a script cannot drain the plan's minutes
