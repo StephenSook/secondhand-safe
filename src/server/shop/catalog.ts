@@ -71,7 +71,7 @@ export function prescreen(l: Listing): Screen {
   if (l.cls !== "other" && l.review?.ok !== "no") {
     // below the model's decision threshold: say it leaned that way instead of claiming the photo is clear
     return { tone: "amber", kind: "NEEDS_CHECK", headline: `Photo model unsure: leans ${type}`,
-      reason: `Our photo model's best guess is a ${type} (${Math.round(l.p * 100)}%), below the level where it decides on its own. Look closely at pickup.` };
+      reason: `Our photo model's best guess is ${/^[aeiou]/i.test(type) ? "an" : "a"} ${type} (${Math.round(l.p * 100)}%), below the level where it decides on its own. Look closely at pickup.` };
   }
   if (v.kind === "NEEDS_CHECK") return { tone: "amber", kind: v.kind, headline: "Needs a check", reason: v.reason };
   if (/car ?seat|booster/i.test(l.title)) {
