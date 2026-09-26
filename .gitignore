@@ -33,3 +33,6 @@ data/raw/
 mobile/.expo/
 mobile/ios/
 mobile/android/
+
+# python caches
+data/__pycache__/
