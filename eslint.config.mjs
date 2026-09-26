@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "ml/**",
     "data/**",
     "public/models/**",
+    "public/vendor/**",
     "mobile/**",
   ]),
 ]);

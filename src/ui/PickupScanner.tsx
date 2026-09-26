@@ -79,6 +79,32 @@ export function PickupScanner() {
     try { if (d) sessionStorage.setItem(DEAL_KEY, JSON.stringify(d)); else sessionStorage.removeItem(DEAL_KEY); } catch {}
   };
 
+  const [agentMsg, setAgentMsg] = useState<{ ok: boolean; text: string; sig?: string } | null>(null);
+
+  async function agentBuy(tamper: boolean) {
+    setDealErr("");
+    setAgentMsg(null);
+    setBusy(tamper ? "Sending a request edited after signing…" : "Our agent is signing the checkout (Trusted Agent Protocol)…");
+    try {
+      const r = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd, tamper }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      const m = j.merchant;
+      if (m.status === "HELD" && m.token) {
+        saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at });
+        setVerdict(null);
+        setAgentMsg({ ok: true, text: `Merchant verified the agent's signature (key ${m.tap?.keyid}), then Visa held the payment.`, sig: j.agent["signature-input"] });
+      } else {
+        setAgentMsg({ ok: false, text: `Merchant refused (HTTP ${m.httpStatus}): ${m.error ?? "unknown"}. Signed $${j.agent.signed.amountUsd}, sent $${j.agent.sent.amountUsd}.`, sig: j.agent["signature-input"] });
+      }
+    } catch (e) {
+      setDealErr((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function startDeal() {
     setDealErr("");
     setBusy("Asking Visa to authorize and hold…");
@@ -269,7 +295,13 @@ export function PickupScanner() {
                   </label>
                 ))}
               </div>
-              <div className="mt-4"><SquashButton onClick={startDeal} accent="var(--amber)">Agree and hold the payment</SquashButton></div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <SquashButton onClick={startDeal} disabled={!!busy} accent="var(--amber)">Agree and hold the payment</SquashButton>
+                <SquashButton onClick={() => agentBuy(false)} disabled={!!busy} bg="var(--visa)" accent="var(--aqua)">Let our agent buy it</SquashButton>
+              </div>
+              <button type="button" onClick={() => agentBuy(true)} disabled={!!busy} className="mt-3 text-sm font-bold underline decoration-2 underline-offset-4">
+                Try a tampered agent request (amount edited after signing)
+              </button>
               <p className="mt-3 text-xs font-semibold text-ink/60">Authorizes Visa&apos;s sandbox test card with capture off. Card entry by Microform is next.</p>
             </>
           )}
@@ -289,6 +321,12 @@ export function PickupScanner() {
                 ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>
                 : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">Start a new deal</button>}
             </>
+          )}
+          {agentMsg && (
+            <div className={`mt-3 rounded-xl p-3 text-sm font-semibold ${agentMsg.ok ? "bg-paper text-green-deep" : "bg-paper text-red-deep"}`}>
+              <p>{agentMsg.ok ? "TAP verified. " : "TAP refused. "}{agentMsg.text}</p>
+              {agentMsg.sig && <p className="mt-1 font-mono text-[0.65rem] break-all text-ink/60">Signature-Input: {agentMsg.sig}</p>}
+            </div>
           )}
           {dealErr && <p className="mt-3 rounded-xl bg-paper text-red-deep p-3 font-bold">{dealErr}</p>}
         </div>

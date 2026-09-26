@@ -2,13 +2,30 @@ import { MissingEnvError } from "@/server/env";
 import { authorize, newDealId } from "@/server/visa/acceptance";
 import { visaCreds, SANDBOX_TEST_CARD } from "@/server/visa/creds";
 import { issueDealToken } from "@/server/deals/token";
+import { verifyAgentRequest } from "@/server/tap/agent";
 
 /**
  * POST { listing, amountUsd } -> a real Visa Acceptance sandbox authorization with capture OFF: the HOLD.
  * Returns the deal token that /api/pickup needs to settle exactly this hold.
+ * A request carrying Trusted Agent Protocol headers (an AI agent buying for a parent) must verify first: a bad
+ * signature, edited body, expired window, unknown key or replayed nonce is refused before Visa is called.
  */
 export async function POST(request: Request) {
-  const b = (await request.json().catch(() => null)) as { listing?: unknown; amountUsd?: unknown } | null;
+  const raw = await request.text();
+  let agent: { keyid: string } | undefined;
+  if (request.headers.has("signature-input")) {
+    let v;
+    try {
+      v = await verifyAgentRequest("POST", request.url, raw, request.headers);
+    } catch (e) {
+      if (e instanceof MissingEnvError) return Response.json({ error: "Agent requests are not accepted on this deployment (no TAP key)." }, { status: 503 });
+      throw e;
+    }
+    if (!v.ok) return Response.json({ error: `Trusted Agent Protocol check failed: ${v.reason}. No payment was attempted.`, tap: v }, { status: 401 });
+    agent = { keyid: v.keyid };
+  }
+  let b: { listing?: unknown; amountUsd?: unknown } | null = null;
+  try { b = JSON.parse(raw); } catch {}
   const listing = typeof b?.listing === "string" ? b.listing.trim().slice(0, 80) : "";
   const amountUsd = typeof b?.amountUsd === "number" ? Math.round(b.amountUsd * 100) / 100 : NaN;
   if (!listing || !(amountUsd >= 1 && amountUsd <= 2000)) {
@@ -33,7 +50,7 @@ export async function POST(request: Request) {
     return Response.json({ error, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
   }
   return Response.json({
-    dealId, listing, amountUsd, status: "HELD",
+    dealId, listing, amountUsd, status: "HELD", ...(agent ? { tap: { verified: true, keyid: agent.keyid } } : {}),
     visa: { authId: auth.id, status: auth.status, httpStatus: auth.httpStatus, host: creds.host },
     token: issueDealToken(creds.secret, { dealId, authId: auth.id, amountUsd }),
     at: new Date().toISOString(),
