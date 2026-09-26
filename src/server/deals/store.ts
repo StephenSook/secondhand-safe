@@ -61,13 +61,19 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
       : s.status === "REFUSED" ? "Visa refused the settlement (already settled or not open)" : "Visa did not confirm";
     // an already-final deal keeps its final status, reason and passport; a later scan is appended to the timeline only
     const final = { $in: ["$status", ["CAPTURED", "REVERSED"]] };
-    const r = await c.updateOne({ _id: dealId }, [{ $set: {
+    const update = () => c.updateOne({ _id: dealId }, [{ $set: {
       status: { $cond: [final, "$status", s.status] },
       verdict: { $cond: [final, "$verdict", { $literal: s.verdict }] },
       passportPath: { $cond: [final, "$passportPath", s.passportPath ?? null] },
       updatedAt: at,
       events: { $concatArrays: ["$events", [{ $literal: { at, status: s.status, note } }]] },
     } }]);
+    // the hold's record is written in the background too: if this settlement arrives first, wait for it briefly
+    let r = await update();
+    for (let i = 0; i < 3 && r.matchedCount === 0; i++) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      r = await update();
+    }
     if (r.matchedCount === 0) {
       console.warn(`[deals] recordSettlement: no record for ${dealId} (its hold was not recorded)`);
       return false;

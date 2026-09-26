@@ -19,13 +19,14 @@ export function DealLive({ dealId }: { dealId: string }) {
   const [err, setErr] = useState("");
   useEffect(() => {
     let live = true;
+    const started = Date.now();
     const load = async () => {
       try {
         const r = await fetch(`/api/deals/${dealId}`, { cache: "no-store" });
         const j = await r.json();
         if (!live) return;
         // the record is written just after Visa answers, so a first look can arrive before it: keep polling
-        if (r.status === 404) { setErr("Waiting for this deal's record…"); return; }
+        if (r.status === 404) { setErr(Date.now() - started < 20_000 ? "Waiting for this deal's record…" : j.error ?? "No record of this deal."); return; }
         if (!r.ok) { setErr(j.error ?? `HTTP ${r.status}`); return; }
         setErr(""); setD(j);
       } catch { if (live) setErr("Could not reach the deal store; retrying."); }
