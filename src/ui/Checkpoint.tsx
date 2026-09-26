@@ -9,6 +9,7 @@ import { canSettle, kioskState, mergeRecord, readDealToken, recordApplies, type 
 import type { Verdict, VerdictKind } from "@/core/verdict";
 import { VERDICT_LABEL } from "@/core/verdict";
 import { BRAND } from "@/core/brand";
+import { RecallCallOptIn } from "./RecallCallOptIn";
 
 /**
  * The table kiosk at the expo pickup: one deal, one huge state, and a barcode scanner (or a keyboard) as input.
@@ -141,8 +142,13 @@ function RecordFeed({ dealId, onRecord }: { dealId: string; onRecord: (r: DealRe
 
 type Scan = { id: number; upc: string; source: "scanner" | "keyboard"; verdict?: Verdict; replayed?: boolean };
 
+type Health = { integrations: Record<string, boolean> };
+
 export function Checkpoint() {
   const [local, setLocal] = useState<Local | null>(null);
+  // same source /pickup uses to decide whether the recall-call opt-in is shown
+  const [health, setHealth] = useState<Health | null>(null);
+  useEffect(() => { fetch("/api/health").then((r) => r.json()).then(setHealth).catch(() => setHealth(null)); }, []);
   const localRef = useRef<Local | null>(null);
   // the code that was SENT, bound by request id to the verdict it produced; a scan ignored while busy never replaces it
   const [scan, setScan] = useState<Scan | null>(null);
@@ -387,6 +393,7 @@ export function Checkpoint() {
             {local.passportError && <><dt>passport</dt><dd>{local.passportError}</dd></>}
           </dl>
         )}
+        {health?.integrations?.recallCall && local?.token && <RecallCallOptIn key={local.dealId} token={local.token} status={local.status} />}
       </section>
 
       <section className="rounded-[2rem] border-[3px] border-ink bg-paper p-4 sm:p-6 grid gap-4 lg:grid-cols-[1.2fr_1fr] items-start">

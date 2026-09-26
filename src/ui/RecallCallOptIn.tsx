@@ -9,7 +9,8 @@ import { useEffect, useState, type FormEvent } from "react";
  * Shows the call on this buyer's own screen with the last 4 digits only.
  */
 type Status = { optedIn: boolean; last4: string | null; verifying: string | null; calls: { reason: string; status: string; last4: string; at: string }[] };
-type DealState = "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN";
+// RELEASED / LAPSED (the kiosk's deal states) are closed like REVERSED: the opt-in form shows only for HELD or CAPTURED
+type DealState = "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN" | "RELEASED" | "LAPSED";
 
 const time = (iso: string) => { try { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); } catch { return ""; } };
 const CALL_LINE: Record<string, (c: Status["calls"][number]) => string> = {
