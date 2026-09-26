@@ -17,6 +17,8 @@ const LIVE_LABEL: Record<string, string> = {
   elevenlabs: "ElevenLabs spoken verdict",
   tap: "Trusted Agent Protocol signing key",
   solana: "Solana devnet passport",
+  visaDirect: "Visa Direct seller payout (Visa Developer sandbox)",
+  recallCall: "Recall phone call (Vonage Voice + ElevenLabs)",
 };
 
 /** The judge's door: no login, no key, every step runs against this deployment. */
@@ -38,6 +40,8 @@ export default async function JudgePage() {
         : "On /pickup the scan decides CAPTURE or REVERSE. The Visa hold itself needs sandbox keys on this deployment (see the live list below); it is verified by tests/visa.live.test.ts.",
       link: "/pickup", cta: "Open pickup scan" },
     { t: "Get the item's passport", d: "When a clean label captures the payment, a Solana devnet transaction stores the SHA-256 of the pickup record (no personal data on chain). The passport page reads it back and checks the signer, the transaction and the hash.", link: "/pickup", cta: "Capture a clean deal on /pickup" },
+    // wired-or-cut: this step exists only when /api/health reports Visa Direct configured on this deployment
+    ...(live.visaDirect && live.visa ? [{ t: "Watch the seller get paid", d: "Right after a capture, Visa Direct pushes the captured amount to the seller as a real Visa Developer sandbox push funds transaction (to Visa's sandbox test recipient card, since a demo seller has no card). The outcome and Visa's transaction id land on the deal's timeline, the board and the Trust and Safety console. Connectivity check:", code: `curl ${base}/api/health/visa-direct`, link: "/board", cta: "Open the deal board" }] : []),
     { t: "Pay again with a saved card", d: "Tick “Save this card with Visa” on the first hold. Next time, “Use my saved card” pays with Visa's Token Management Service; the card stays in Visa's vault. When Visa applies a card-linked offer, the hold is the discounted amount and the saving is shown.", link: "/pickup", cta: "Open pickup" },
     { t: "The phone app", d: "The same product as an iOS and Android app (Expo, built with EAS): shop, scan a label with the camera, and the deal board, all on this deployment's API. On Android, download and install the APK; the source is in mobile/.", link: "https://github.com/StephenSook/secondhand-safe/releases/tag/mobile-v1.0.0", cta: "Get the Android APK" },
     { t: "Settle it at the table kiosk", d: "After you press Agree on /pickup, open /checkpoint in the same tab: it picks up that hold. Scan the item's barcode with a USB scanner (it types like a keyboard), or type a UPC and press Enter. A recalled UPC, such as 669028116546 (CPSC 26-530), reverses the hold; a UPC with no recall captures it. One full-screen state, a sound per change, and a settlement made on another device shows up live.", link: "/checkpoint", cta: "Open the checkpoint" },
@@ -45,6 +49,7 @@ export default async function JudgePage() {
     { t: "See it as a marketplace's safety team would", d: "The Trust and Safety console: why holds were reversed (by the actual CPSC recall number), money that never reached a seller of a recalled item, time from hold to decision. Computed live from MongoDB Atlas; the deals are our demos and automated tests.", link: "/trust", cta: "Open the console" },
     { t: "Compare a photo with every recall photo", d: "MongoDB Atlas Vector Search over the CPSC recall photos: on /pickup your photo's embedding (computed in your browser) returns the three closest recall photos. Tested on held-out photos, and a resemblance is only ever a reason to read the label. Try a scanned listing:", code: `curl "${base}/api/lookalike?listingId=ebay:287601074532"` },
     { t: "See the Atlanta scan", d: `Every one of the ${facts.scannedAtlanta} Craigslist Atlanta baby and kid listings we scanned, on a map, with what review found.`, link: "/map", cta: "Open the map" },
+    ...(live.recallCall ? [{ t: "Get the recall call", d: "On /pickup, after the hold, type your US phone number under “Call me if it's recalled”: Lullabuy phones you a 4-digit code, and you type it back. Then type BHC001 / 202408: Visa reverses the hold, and a few seconds later Lullabuy phones you and says, in the ElevenLabs voice, which CPSC recall matched and that you were not charged. Press 1 to hear it again. One call per deal, capped per day.", link: "/pickup", cta: "Open pickup" }] : []),
     { t: "Read the code", d: "Every number on this site is computed by a script in the repo. CI runs lint, types, tests, build, pytest, secret scan and an em-dash gate.", link: "https://github.com/StephenSook/secondhand-safe", cta: "GitHub" },
   ];
   return (
@@ -81,7 +86,7 @@ export default async function JudgePage() {
             <ul className="mt-5 grid sm:grid-cols-2 gap-3">
               <li className="flex items-center gap-3 font-bold"><span className="rounded-full bg-green px-2.5 py-0.5 text-xs">LIVE</span>CPSC recall index + matcher</li>
               <li className="flex items-center gap-3 font-bold"><span className="rounded-full bg-green px-2.5 py-0.5 text-xs">LIVE</span>Banned-type classifier results</li>
-              {Object.entries(live).map(([k, on]) => (
+              {Object.entries(live).filter(([k, on]) => on || k !== "visaDirect").map(([k, on]) => (
                 <li key={k} className="flex items-center gap-3 font-bold">
                   <span className={`rounded-full px-2.5 py-0.5 text-xs ${on ? "bg-green" : "bg-paper/15 text-paper/70"}`}>{on ? "LIVE" : "NOT YET"}</span>
                   {LIVE_LABEL[k]}

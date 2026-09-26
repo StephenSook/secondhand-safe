@@ -6,9 +6,11 @@ import { decide, settle } from "@/server/deals/settle";
 import { mongoClaims, settleOnce } from "@/server/deals/claim";
 import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, passportRecord, recordHash } from "@/server/solana/memo";
-import { getDeal, recordSettlement } from "@/server/deals/store";
+import { getDeal, recordSettlementStatus } from "@/server/deals/store";
+import { payoutAfterCapture } from "@/server/deals/payout";
 import { mintPassport } from "@/server/solana/mints";
 import { waitUntil } from "@vercel/functions";
+import { callAfterReversal } from "@/server/call/pickup";
 
 // the Core asset mint runs after the response (waitUntil): balance 8 s + claim + cap + a 40 s send + writes (up to 12 s).
 // If the function is stopped anyway, the claim stays pending with its address and the watch cron reconciles it.
@@ -79,10 +81,21 @@ export async function POST(request: Request) {
         passport = { error: `Passport not written: ${(e as Error).message}` };
       }
     }
-    waitUntil(recordSettlement(deal.dealId, { status: out.status,
+    const recorded = recordSettlementStatus(deal.dealId, { status: out.status,
       verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
       passportPath: passport && "path" in passport ? passport.path : null,
-      label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } }));
+      label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } });
+    // Visa Direct seller payout (PLAN 3.17), only after Visa Acceptance accepts the capture, in the background: it never delays or
+    // changes this response. It runs after the settlement write so the timeline reads CAPTURED, then the payout.
+    // Only when the deal's EFFECTIVE stored status is CAPTURED: a capture arriving after a recorded reversal or release
+    // leaves the deal REVERSED / RELEASED, and then no payout is sent. Inside the settlement claim, so a replayed or
+    // concurrent scan of the same deal never sends a second payout.
+    waitUntil(out.status === "CAPTURED"
+      ? recorded.then((st) => (st === "CAPTURED" ? payoutAfterCapture({ dealId: deal.dealId, amountUsd: deal.amountUsd }) : null))
+      : recorded);
+    // the recall call (opt-in): background only, after the settlement is recorded; it never delays this answer.
+    // Inside the settlement claim, so a replayed or concurrent scan of the same deal never places a second call.
+    if (out.status === "REVERSED") waitUntil(callAfterReversal(deal.dealId, verdict).catch(() => {}));
     return {
       dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
       visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },

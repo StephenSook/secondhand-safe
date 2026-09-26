@@ -99,6 +99,17 @@ export default async function TrustPage() {
                 </div>
               </div>
 
+              {Object.keys(s.payouts).length > 0 && (
+                <div data-testid="payouts" className="rounded-[2rem] border-[3px] border-ink bg-paper p-6">
+                  <h2 className="display text-2xl mb-2">Sellers paid with Visa Direct</h2>
+                  <p className="font-semibold">
+                    {usd(s.payouts.SENT?.usd ?? 0)} pushed to sellers after capture ({s.payouts.SENT?.n ?? 0} sent
+                    {s.payouts.UNCERTAIN?.n ? `, ${s.payouts.UNCERTAIN.n} not yet confirmed` : ""}
+                    {s.payouts.FAILED?.n ? `, ${s.payouts.FAILED.n} failed` : ""}). Visa Developer sandbox, paid to Visa&apos;s sandbox test recipient card.
+                  </p>
+                </div>
+              )}
+
               <div className="rounded-[2rem] border-[3px] border-ink bg-paper p-6">
                 <h2 className="display text-2xl mb-4">Every hold, by how it ended ({s.deals})</h2>
                 <Bars s={s} />

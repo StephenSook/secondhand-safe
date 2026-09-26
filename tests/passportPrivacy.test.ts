@@ -14,12 +14,13 @@ vi.mock("@/server/deals/claim", async (orig) => {
 });
 vi.mock("@/server/recalls/match", () => ({ checkLabel: () => ({ kind: "NO_MATCH", reason: "no recall names this model", asOf: "2026-09-20" }) }));
 vi.mock("@/server/solana/memo", async (orig) => ({ ...(await orig<typeof import("@/server/solana/memo")>()), anchor: vi.fn(async () => "5".repeat(88)) }));
-vi.mock("@/server/deals/store", async (orig) => ({ ...(await orig<typeof import("@/server/deals/store")>()), recordSettlement: vi.fn(async () => true),
+vi.mock("@/server/deals/store", async (orig) => ({ ...(await orig<typeof import("@/server/deals/store")>()), recordSettlement: vi.fn(async () => true), recordSettlementStatus: vi.fn(async () => "CAPTURED" as const),
   getDeal: vi.fn(async () => ({ state: "missing" as const })) })); // the deal is not final yet, so the claim proceeds
 vi.mock("@/server/solana/mints", () => ({ mintPassport: vi.fn(async () => ({ state: "minted" })) }));
+vi.mock("@/server/deals/payout", () => ({ payoutAfterCapture: vi.fn(async () => null) }));
 vi.mock("@vercel/functions", () => ({ waitUntil: (p: Promise<unknown>) => { void p; } }));
 import { POST } from "@/app/api/pickup/route";
-import { boardDeal, pub, recordSettlement, type DealRecord } from "@/server/deals/store";
+import { boardDeal, pub, recordSettlementStatus, type DealRecord } from "@/server/deals/store";
 
 /** every Visa-looking thing a decoded public record could carry: a key naming Visa, auth or capture, a known id, or a
  *  long digit run (Visa transaction ids are 22 digits) */
@@ -48,7 +49,7 @@ describe("the public passport record carries no Visa identifier", () => {
     const j = await res.json();
     expect(j.status).toBe("CAPTURED");
     expect(j.visa.id).toBe(VISA_CAPTURE); // the buyer holding the deal token still gets the capture id in the response
-    const stored = vi.mocked(recordSettlement).mock.calls[0][1].passportPath as string;
+    const stored = vi.mocked(recordSettlementStatus).mock.calls[0][1].passportPath as string;
     const d: DealRecord = { _id: "shs-0123abcd-4567", listing: "x", amountUsd: 40, status: "CAPTURED", card: null, agent: null, authId: AUTH_ID,
       createdAt: "t", updatedAt: "t", events: [], passportPath: stored };
     const shapes = [j.passport.path as string, stored, pub(d).passportPath as string, boardDeal(d).passportPath as string];

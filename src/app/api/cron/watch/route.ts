@@ -4,6 +4,7 @@ import { updatePassportStatus } from "@/server/solana/core";
 import { reconcileMints } from "@/server/solana/mints";
 import { recheckSales } from "@/server/watch/recheck";
 import { notify } from "@/server/watch/push";
+import { queueRecallCall, runPendingCalls } from "@/server/call/trigger";
 
 export const maxDuration = 300;
 /** Chain work stops being started once less than this remains: one update can take balance 8 s + fetch 10 s + a 40 s
@@ -47,7 +48,9 @@ export async function GET(request: Request) {
       .catch(() => ({ sent: 0, failed: 1, subs: 1 }));
     const delivered = push.subs === 0 || push.sent > 0;
     const newly = delivered ? await flagPostSaleRecall(h.dealId, { recallNumber: h.recallNumber, title: h.title, url: h.url }, push.sent) : false;
-    out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered });
+    // the recall call (opt-in): only QUEUED here (idempotent); placed after the loop, so telephony never slows the watch
+    const call = newly ? ((await queueRecallCall(h.dealId, h.recallNumber)) ? "queued" : "not-queued") : "not-flagged";
+    out.push({ dealId: h.dealId, recallNumber: h.recallNumber, flagged: !!newly, notified: push.sent, retryTomorrow: !delivered, call });
   }
   // the on-chain passport follows the deal record: every sale with a Core asset whose confirmed recall differs from the
   // deal's current recall (a newly flagged one, a later second recall, or an earlier update that did not land)
@@ -66,5 +69,7 @@ export async function GET(request: Request) {
     const recorded = r.ok ? await recordPassportAssetRecall(s._id, asset, recall) : null;
     chain.push({ dealId: s._id, asset, recall, updated: r.ok, ...(r.ok ? { signature: r.signature, recorded: !!recorded } : { reason: r.reason }) });
   }
-  return Response.json({ checked: sales.length, hits: out, deferredHits, passportAssets: chain, mints }, { headers: NO_STORE });
+  // queued recall calls (this run's and earlier leftovers) in parallel, within what is left of this function's time
+  const calls = await runPendingCalls(began + maxDuration * 1000 - 5000);
+  return Response.json({ checked: sales.length, hits: out, deferredHits, passportAssets: chain, mints, calls }, { headers: NO_STORE });
 }
