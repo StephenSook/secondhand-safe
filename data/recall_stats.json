@@ -1,14 +1,14 @@
 {
  "regex_models": 705,
- "gemini_models_kept": 0,
- "gemini_models_rejected": 0,
- "asOf": "2026-09-26T07:21:55+00:00",
+ "gemini_models_kept": 2869,
+ "gemini_models_rejected": 774,
+ "asOf": "2026-09-26T11:59:17+00:00",
  "recallsFetched": 6036,
  "nurseryRecalls": 1137,
  "nhtsaChildSeatCampaigns": 71,
- "withAnyIdentifier": 449,
- "identifiers": 1385,
- "geminiValuesRejected": 0,
- "geminiModel": null,
- "geminiRecords": 0
+ "withAnyIdentifier": 822,
+ "identifiers": 5228,
+ "geminiValuesRejected": 856,
+ "geminiModel": "gemini-3.5-flash",
+ "geminiRecords": 1137
 }

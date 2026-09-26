@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Nav } from "@/ui/Nav";
 import { ScanMap } from "@/ui/ScanMap";
+import { BRAND } from "@/core/brand";
 
-export const metadata: Metadata = { title: "The Atlanta scan: SecondHand Safe" };
+export const metadata: Metadata = { title: `The Atlanta scan: ${BRAND}` };
 
 export default function MapPage() {
   return (

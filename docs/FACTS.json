@@ -1,5 +1,5 @@
 {
- "asOf": "2026-09-26T07:25:00+00:00",
+ "asOf": "2026-09-26T12:00:21+00:00",
  "scanned": 1662,
  "scannedBySource": {
   "ebay": 1049,
@@ -44,7 +44,7 @@
   "recallsFetched": 6036,
   "nurseryRecalls": 1137,
   "nhtsaChildSeatCampaigns": 71,
-  "withAnyIdentifier": 449,
-  "identifiers": 1385
+  "withAnyIdentifier": 822,
+  "identifiers": 5228
  }
 }

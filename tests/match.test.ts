@@ -98,3 +98,30 @@ describe("legal rules (PLAN D3)", () => {
     expect(checkLabel({ model: "QX-831", cls: { cls: "crib_bumper", p: 0.9 } }).kind).toBe("RECALL_MATCH");
   });
 });
+
+describe("short all-digit model numbers never move money on their own (real Delta drop-side crib recalls list 4340)", () => {
+  it("4340 with no brand waits for a person and names the brand", () => {
+    const v = checkLabel({ model: "4340" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.reason).toMatch(/Delta/);
+    expect(v.reason).toMatch(/confirm the brand/);
+  });
+  it("brand words in ordinary listing text do not turn a short number into a reversal", () => {
+    for (const [model, text] of [["2158", "pickup at my place"], ["02800", "used one summer"], ["8050", "love the simplicity"],
+      ["700452", "small gap in seam"], ["4340", "Delta Enterprise crib"]]) {
+      expect(checkLabel({ model, text }).kind, `${model} / ${text}`).toBe("NEEDS_CHECK");
+    }
+  });
+  it("an uncertain recall hit never hides a banned type (Delta 4340 photographed as a drop-side crib)", () => {
+    expect(checkLabel({ model: "4340", cls: { cls: "drop_side_crib", p: 0.9 } }).kind).toBe("BANNED_TYPE");
+  });
+  it("an OCR letter O inside a number is still a short number (O2800)", () => {
+    expect(checkLabel({ model: "O2800" }).reason).toMatch(/confirm the brand/);
+  });
+  it("letter models that fold to digits are still letter models (Deux par Deux L524, CPSC 10194)", () => {
+    expect(checkLabel({ model: "L524" }).kind).toBe("RECALL_MATCH");
+  });
+  it("alphanumeric model numbers still match directly (BHC001 batch 202408)", () => {
+    expect(checkLabel({ model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH");
+  });
+});

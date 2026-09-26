@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Nav } from "@/ui/Nav";
 import { PickupScanner } from "@/ui/PickupScanner";
+import { BRAND } from "@/core/brand";
 
-export const metadata: Metadata = { title: "Pickup scan: SecondHand Safe" };
+export const metadata: Metadata = { title: `Pickup scan: ${BRAND}` };
 
 export default function PickupPage() {
   return (

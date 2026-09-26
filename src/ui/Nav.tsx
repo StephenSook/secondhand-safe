@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Mark } from "./Mark";
+import { BRAND } from "@/core/brand";
 
 const LINKS = [
   { href: "/#how", label: "How it works" },
@@ -28,7 +29,7 @@ export function Nav() {
       <Link href="/" className="pointer-events-auto flex items-center gap-2 rounded-full bg-paper/90 backdrop-blur px-3 py-2 shadow-[0_2px_0_var(--ink)] border-2 border-ink">
         <Mark size={28} />
         <span className={`display text-lg transition-[max-width,opacity] duration-500 overflow-hidden whitespace-nowrap ${scrolled ? "max-w-0 opacity-0 sm:max-w-[12em] sm:opacity-100" : "max-w-[12em]"}`}>
-          SecondHand Safe
+          {BRAND}
         </span>
       </Link>
       <nav aria-label="Main" className="pointer-events-auto hidden md:flex items-center gap-1.5">
