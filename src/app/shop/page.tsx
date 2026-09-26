@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Nav } from "@/ui/Nav";
-import { ShopAgent } from "@/ui/ShopAgent";
+import { ShopWithVoice } from "@/ui/ShopWithVoice";
 import { BRAND } from "@/core/brand";
 import { CATALOG } from "@/server/shop/catalog";
 
@@ -20,7 +20,7 @@ export default function ShopPage() {
             seller, and our agent can place a signed Visa hold that only turns into a payment once the label passes at
             pickup.
           </p>
-          <div className="mt-10"><ShopAgent /></div>
+          <div className="mt-10"><ShopWithVoice /></div>
         </section>
       </main>
     </>

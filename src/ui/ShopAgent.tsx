@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import Link from "next/link";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
@@ -15,6 +15,16 @@ type Listing = { id: string; source: string; region: string | null; url: string;
 type Result = { listing: Listing; screen: Screen };
 type ShopResponse = { engine: "gemini" | "keywords"; reply: string; results: Result[]; counts: { red: number; amber: number; clear: number }; ms: number; error?: string };
 type Held = { id: string; ok: boolean; text: string };
+
+/**
+ * What the voice agent can do to this screen (PLAN 5.6): run a search so the results appear, and point at one
+ * listing. It can never place a hold: proposing only scrolls to the card and highlights its hold button, and the
+ * parent has to tap it. Red listings are never proposed (and /api/agent/checkout refuses them regardless).
+ */
+export type ShopHandle = {
+  show: (q: string) => Promise<string>;
+  propose: (listingId: string) => string;
+};
 
 const EXAMPLES = ["A bassinet for my newborn under $80, pickup in Atlanta", "Infant sleeper for the bed", "Crib under $100 near Atlanta", "Baby car seat under $60"];
 const AGENT_MAX = 200;
@@ -31,7 +41,7 @@ const speechCtor = (): (new () => SR) | null => {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 };
 
-export function ShopAgent() {
+export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
@@ -42,6 +52,8 @@ export function ShopAgent() {
   const inputRef = useRef<HTMLInputElement>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const [voiceMsg, setVoiceMsg] = useState("");
+  const [proposed, setProposed] = useState("");
+  const resRef = useRef<ShopResponse | null>(null);
 
   /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
   async function speakSummary(r: ShopResponse, lang: "en" | "es") {
@@ -60,21 +72,47 @@ export function ShopAgent() {
     }
   }
 
-  async function run(query = q) {
+  async function run(query = q): Promise<ShopResponse | null> {
     const text = query.trim();
-    if (!text) return;
-    setQ(text); setBusy(true); setErr(""); setHeld(null);
+    if (!text) return null;
+    setQ(text); setBusy(true); setErr(""); setHeld(null); setProposed("");
     try {
       const r = await fetch("/api/shop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q: text }) });
       const j = (await r.json()) as ShopResponse;
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      resRef.current = j;
       setRes(j);
+      return j;
     } catch (e) {
       setErr((e as Error).message);
+      return null;
     } finally {
       setBusy(false);
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    async show(query: string) {
+      const text = String(query ?? "").trim().slice(0, 400);
+      if (text.length < 2) return "No search ran: ask the parent what they are looking for.";
+      const j = await run(text);
+      if (!j) return "The search did not run on screen. Tell the parent to try again or type it.";
+      const c = j.counts;
+      return `On screen now: ${j.results.length} listings. ${c.red} refused, ${c.amber} need a check, ${c.clear} photo check passed.`;
+    },
+    propose(listingId: string) {
+      const hit = resRef.current?.results.find((r) => r.listing.id === String(listingId ?? ""));
+      if (!hit) return "That listing is not on screen. Call show_results with the parent's request first.";
+      if (hit.screen.tone === "red") return `Refused: ${hit.screen.headline}. This listing can never be held. Suggest another one.`;
+      const price = hit.listing.priceUsd ?? 0;
+      if (!(price >= 1 && price <= AGENT_MAX)) return `This one cannot be held by the agent (${price > AGENT_MAX ? `over the $${AGENT_MAX} limit` : "no price listed"}).`;
+      setProposed(hit.listing.id);
+      requestAnimationFrame(() => {
+        document.getElementById(`listing-${hit.listing.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return `Highlighted on screen with its hold button. Nothing is held yet: the parent has to tap "Buy with our agent" themselves.`;
+    },
+  }));
 
   function listen() {
     const Ctor = speechCtor();
@@ -169,7 +207,8 @@ export function ShopAgent() {
               const price = l.priceUsd ?? 0;
               const canBuy = r.screen.tone !== "red" && price >= 1 && price <= AGENT_MAX;
               return (
-                <li key={l.id} data-tone={r.screen.tone} className={`rounded-[1.75rem] border-[3px] border-ink ${t.bg} p-4 grid grid-cols-[6.5rem_1fr] gap-4`}>
+                <li key={l.id} id={`listing-${l.id}`} data-tone={r.screen.tone} data-proposed={proposed === l.id || undefined}
+                  className={`rounded-[1.75rem] border-[3px] border-ink ${t.bg} p-4 grid grid-cols-[6.5rem_1fr] gap-4 scroll-mt-28 ${proposed === l.id ? "ring-[6px] ring-visa ring-offset-2" : ""}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={l.image ?? ""} alt={l.title} loading="lazy" referrerPolicy="no-referrer"
                     className="w-[6.5rem] h-[6.5rem] object-cover rounded-xl border-2 border-ink bg-white" />
@@ -183,6 +222,11 @@ export function ShopAgent() {
                       <a href={l.url} target="_blank" rel="noreferrer" className="underline">listing</a>
                     </p>
                   </div>
+                  {proposed === l.id && (
+                    <p role="status" className="col-span-2 rounded-xl border-2 border-ink bg-paper p-2 text-sm font-extrabold">
+                      <span aria-hidden>👉</span> Lullabuy suggested this one. Nothing is held until you tap the hold button yourself.
+                    </p>
+                  )}
                   <p className="col-span-2 text-sm font-semibold">{r.screen.reason}</p>
                   <div className="col-span-2 flex flex-wrap items-center gap-3">
                     {canBuy ? (
