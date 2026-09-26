@@ -43,15 +43,18 @@ export function CardFields({ onState }: { onState: (s: CardState) => void }) {
     stateRef.current({ state: "loading" });
     (async () => {
       try {
-        const r = await fetch("/api/microform", { method: "POST" });
+        const r = await fetch("/api/microform", { method: "POST", signal: AbortSignal.timeout(15_000) });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
         const payload = JSON.parse(atob(j.captureContext.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
         const lib = payload.ctx?.[0]?.data;
         if (!lib?.clientLibrary || !lib?.clientLibraryIntegrity) throw new Error("capture context has no client library");
-        const expiresMs = Number(payload.exp) * 1000;
+        // lifetime from Visa's own iat/exp, counted on this device's clock, so a skewed device clock cannot
+        // make fresh fields look expired
+        const expiresMs = Date.now() + (Number(payload.exp) - Number(payload.iat)) * 1000;
         await loadLibrary(lib.clientLibrary, lib.clientLibraryIntegrity);
-        if (dead || !window.Flex) return;
+        if (dead) return;
+        if (!window.Flex) throw new Error("Visa's card-field library did not start");
         const micro = new window.Flex(j.captureContext).microform({
           styles: { input: { "font-size": "18px", "font-family": "monospace", color: "#0b1d2a" }, ":focus": { color: "#0b1d2a" }, valid: { color: "#0a7a3b" }, invalid: { color: "#c62828" } },
         });

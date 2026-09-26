@@ -17,9 +17,10 @@ export function allowedOrigin(origin: string | null | undefined, allowLocal = pr
   return PROD_ORIGINS.includes(o) || (allowLocal && LOCAL.test(o)) ? o : null;
 }
 
-/** Fixed-window limit per client per server instance: each call is a signed request under our merchant id. */
+/** Fixed-window limit per client IP per server instance: each call is a signed request under our merchant id.
+ *  60 a minute leaves room for a whole venue behind one NAT. */
 const hits = new Map<string, { n: number; t: number }>();
-export function underLimit(key: string, max = 12, windowMs = 60_000, now = Date.now()): boolean {
+export function underLimit(key: string, max = 60, windowMs = 60_000, now = Date.now()): boolean {
   const h = hits.get(key);
   if (!h || now - h.t > windowMs) {
     if (hits.size > 5000) hits.clear();

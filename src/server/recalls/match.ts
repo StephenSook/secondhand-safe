@@ -101,6 +101,14 @@ function recallVerdict(entry: Entry, field: "model" | "upc", value: string, batc
     reason: `${field === "model" ? "Model" : "UPC"} ${entry.value} matches CPSC recall ${r.recallNumber}: ${r.title}` };
 }
 
+/** The brand as whole words ("Delta" in "Delta Enterprise crib"), never inside another word ("place" in "replacement"). */
+function namesBrand(text: string, brand: string): boolean {
+  const b = brand.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (b.length < 3) return false;
+  const words = text.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  return ` ${words} `.includes(` ${b} `);
+}
+
 const pick = (entries: Entry[]) => [...entries].sort((a, b) => b.recall.recallDate.localeCompare(a.recall.recallDate))[0];
 
 export function checkLabel(input: LabelInput): Verdict {
@@ -115,7 +123,7 @@ export function checkLabel(input: LabelInput): Verdict {
       // A short all-digit model number ("4340") is shared across brands, so it only counts as the recalled product
       // when the label or listing names that recall's brand. Otherwise it waits for a person: never a reversal.
       if (/^\d{4,6}$/.test(fold(input.model))) {
-        const branded = hit.filter((e) => e.recall.brands.some((b) => b.length >= 3 && text.includes(b.toLowerCase())));
+        const branded = hit.filter((e) => e.recall.brands.some((b) => namesBrand(text, b)));
         if (!branded.length) {
           const e = pick(hit);
           const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";

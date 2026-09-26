@@ -112,6 +112,10 @@ describe("short all-digit model numbers need the brand (real Delta drop-side cri
     expect(v.recall?.brands).toContain("Delta");
     expect(v.reason).toMatch(/production dates/);
   });
+  it("a brand inside another word does not count (CPSC 13286 brand PLACE, model 2158)", () => {
+    expect(checkLabel({ model: "2158", text: "replacement cover included" }).kind).toBe("NEEDS_CHECK");
+    expect(checkLabel({ model: "2158", text: "gap between slats, reinforced, burgundy" }).kind).toBe("NEEDS_CHECK");
+  });
   it("4340 on another brand's label still waits", () => {
     expect(checkLabel({ model: "4340", text: "Graco pack n play" }).kind).toBe("NEEDS_CHECK");
   });
