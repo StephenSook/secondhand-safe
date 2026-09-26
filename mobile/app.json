@@ -21,7 +21,10 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "tech.lullabuy.app"
+      "package": "tech.lullabuy.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,6 +39,12 @@
         }
       ]
     ],
-    "scheme": "lullabuy"
+    "scheme": "lullabuy",
+    "extra": {
+      "eas": {
+        "projectId": "cc2f2925-e4a2-4dce-be62-5b1c77b4437f"
+      }
+    },
+    "owner": "stephensook"
   }
 }

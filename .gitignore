@@ -45,3 +45,6 @@ playwright-report/
 
 # copied at build time by scripts/copy-maplibre.mjs
 public/vendor/
+
+# local agent worktrees and settings
+.claude/
