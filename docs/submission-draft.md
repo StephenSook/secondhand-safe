@@ -1,12 +1,12 @@
-# SecondHand Safe: Devpost draft (edit in your own voice before submitting)
+# Lullabuy: Devpost draft (edit in your own voice before submitting)
 
 > Numbers below are copied from `docs/FACTS.json` on 2026-09-26. If you regenerate FACTS, re-copy them.
 > Lines marked TODO need you or Tylin. Delete any integration line that is not live when you submit.
 
 ## Tagline
 
-See the recall before your money moves. SecondHand Safe holds a Visa payment until a camera reads the baby
-gear's label.
+See the recall before your money moves. Lullabuy holds a Visa payment until a camera reads the baby gear's
+label.
 
 ## Inspiration
 
@@ -20,8 +20,8 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 
 ## What it does
 
-1. **Agree and hold.** The buyer agrees on a price and SecondHand Safe asks Visa to authorize the card with
-   capture off. The money is held, not sent.
+1. **Agree and hold.** The buyer agrees on a price and types their card into Visa's own Microform fields.
+   Lullabuy asks Visa to authorize it with capture off. The money is held, not sent.
 2. **Meet and scan.** At pickup, the buyer photographs the label. The barcode is read on the phone, the label
    text is read into model, batch and manufacture date, and our own model looks at the photo for product
    types that are banned outright (inclined sleepers, padded crib bumpers, drop-side cribs).
@@ -36,9 +36,21 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 - **Visa Acceptance (sandbox):** authorization with capture off, full capture, full reversal, signed with
   HTTP Signature. A signed deal token binds the deal, the authorization and the amount, so the pickup scan can
   only settle the hold it was issued for. Replaying a settlement is refused by Visa and shown as refused.
+- **Visa Acceptance Microform:** the card number and CVV are typed into Visa-hosted fields and come back as a
+  one-time token, so the card never reaches our server. Verified end to end in a browser against the sandbox.
+- **Trusted Agent Protocol:** an AI agent buying for a parent signs its checkout with RFC 9421 HTTP Message
+  Signatures (Ed25519), covering the method, host, path and a digest of the body. Our merchant checks the
+  signature, the time window and a one-time nonce before calling Visa. On `/pickup` you can send a request
+  whose amount was edited after signing and watch it get refused. Verified means the agent is who it says
+  and the request was not changed; it does not mean a parent approved the purchase.
+- **MCP server:** the recall check is also an MCP tool (`recall_check` at `/api/mcp`), so any AI shopping
+  agent can check an item before it buys.
 - **Recall index:** 6036 CPSC recalls pulled from the CPSC API, 1137 kept as nursery and children's products,
   plus 71 NHTSA child restraint campaigns. Two hand checks of 20 records each found three extraction bugs,
   which we fixed and wrote up in `data/handcheck.md`.
+- **Gemini:** Gemini 3.5 Flash reads the product label photo into brand, model, batch and date with a box for
+  each field. It also read all 1137 recall notices for model numbers, batches and UPCs. A value is kept only
+  if it appears word for word in that recall's text, which raised the recalls we can match on from 449 to 822.
 - **Banned-type model:** CLIP ViT-B/32 image embeddings with a logistic-regression head we trained on reviewed
   labels. It runs in the buyer's browser with transformers.js, and we trained it on embeddings from that same
   runtime so the phone sees exactly what training saw. On products it had never seen, macro-F1 is 0.7243
@@ -64,6 +76,9 @@ TODO (Stephen): one or two sentences on why this one matters to you.
   exposed it.
 - Payment states: an adversarial review found that a failed or replayed settlement could be shown as HELD.
   Now anything Visa did not confirm is shown as refused or unknown, never as a result.
+- Gemini's recall pass added model numbers like "4340" that several brands use. A match on a short number
+  now waits for a person unless the label names the recalled brand, and that brand has to be a whole word
+  ("replacement" does not count as the brand "Place").
 
 ## Accomplishments that we're proud of
 
@@ -78,16 +93,19 @@ TODO (Stephen and Tylin): write this one yourselves. Judges weigh it; do not lea
 ## What's next
 
 - Seller-side confirmation of the scan (today the buyer's device reports it).
-- Microform card entry, Trusted Agent Protocol for agent checkout, a deal board on MongoDB Atlas.
+- A deal board on MongoDB Atlas and a Solana item passport.
 - Bring the check to Facebook Marketplace handoffs, where the problem is worst.
 
 ## Try it
 
-- Live: https://secondhand-safe-web.vercel.app (judges: /judge)
+- Live: https://secondhand-safe-web.vercel.app (judges: /judge). TODO: lullabuy.tech once registered.
 - `curl "https://secondhand-safe-web.vercel.app/api/check?model=BHC001&batch=202408"`
+- MCP: `{"mcpServers":{"lullabuy":{"type":"http","url":"https://secondhand-safe-web.vercel.app/api/mcp"}}}`
 
 ## Built with
 
 TODO: tick only what is live on submission day. Live now: nextjs, typescript, visa-acceptance (sandbox),
-transformers.js, clip, scikit-learn, python, cpsc-api, nhtsa, maplibre, vercel, playwright, github-actions.
-Add elevenlabs once the production key is set. Add gemini, mongodb, solana only if they are wired by then.
+visa-microform, trusted-agent-protocol, mcp, transformers.js, clip, scikit-learn, python, cpsc-api, nhtsa,
+maplibre, vercel, playwright, github-actions, gemini (the recall pass is in the shipped index; the live label
+reader needs a production key). Add elevenlabs once the production key is set. Add mongodb and solana only
+if they are wired by then.
