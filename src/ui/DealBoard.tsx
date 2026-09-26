@@ -6,7 +6,7 @@ import Link from "next/link";
 /** The deal board for the expo screen: every hold and how it ended, read from MongoDB Atlas every 3 seconds. */
 type Row = { dealId: string; listing: string; amountUsd: number; status: string; updatedAt: string; verdict?: { kind: string } };
 type Board = { recent: Row[]; byStatus: Record<string, { n: number; usd: number }> };
-const CHIP: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand" };
+const CHIP: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand", RELEASED: "bg-aqua", LAPSED: "bg-sand" };
 
 export function DealBoard() {
   const [b, setB] = useState<Board | null>(null);

@@ -11,8 +11,8 @@ type Deal = {
   createdAt: string; updatedAt: string; events: { at: string; status: string; note: string }[];
   verdict?: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null;
 };
-const TONE: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand" };
-const WORD: Record<string, string> = { HELD: "Held at Visa", CAPTURED: "Paid to the seller", REVERSED: "Reversed: buyer keeps the money", REFUSED: "Visa refused", UNKNOWN: "Unconfirmed" };
+const TONE: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand", RELEASED: "bg-aqua", LAPSED: "bg-sand" };
+const WORD: Record<string, string> = { HELD: "Held at Visa", CAPTURED: "Paid to the seller", REVERSED: "Reversed: buyer keeps the money", REFUSED: "Visa refused", UNKNOWN: "Unconfirmed", RELEASED: "Released: pickup never happened", LAPSED: "Lapsed: never captured" };
 
 export function DealLive({ dealId }: { dealId: string }) {
   const [d, setD] = useState<Deal | null>(null);

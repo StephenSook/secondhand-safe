@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     return Response.json({ error: `Visa authorized more than the agreed price; the hold was released (${rel.status}). Nothing was charged.` }, { status: 502 });
   }
   const heldUsd = auth.authorizedUsd && auth.authorizedUsd > 0 ? Math.round(auth.authorizedUsd * 100) / 100 : amountUsd;
-  waitUntil(recordHold({ dealId, listing, amountUsd: heldUsd, card: cardKind, agent: agent?.keyid ?? null }));
+  waitUntil(recordHold({ dealId, listing, amountUsd: heldUsd, card: cardKind, agent: agent?.keyid ?? null, authId: auth.id }));
   const customerId = (auth.raw as { tokenInformation?: { customer?: { id?: string } } })?.tokenInformation?.customer?.id;
   const newSaved = saveCard && customerId ? issueSavedCard(creds.secret, { customerId, masked: maskedFrom(tt!) }) : undefined;
   return Response.json({

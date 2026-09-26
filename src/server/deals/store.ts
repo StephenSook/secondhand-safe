@@ -11,10 +11,14 @@ const KNOWN_TITLES = new Set<string>([...DEMO_TABLE.map((d) => d.label), ...CATA
  * seller's live view (/deal/[id]) and the deal board (/board). Writes are best-effort: a database problem is
  * logged and never changes what happened at Visa, which stays the source of truth for the money.
  */
-export interface DealEvent { at: string; status: DealStatus | "HELD"; note: string }
+/** RELEASED and LAPSED come only from the hold sweeper (src/server/deals/sweep.ts). */
+export type RecordStatus = DealStatus | "RELEASED" | "LAPSED";
+export interface DealEvent { at: string; status: RecordStatus; note: string }
 export interface DealRecord {
   _id: string; // dealId
-  listing: string; amountUsd: number; status: DealStatus; card: string | null; agent: string | null;
+  listing: string; amountUsd: number; status: RecordStatus; card: string | null; agent: string | null;
+  /** Visa authorization id, kept server-side so the sweeper can release an abandoned hold; never public. */
+  authId?: string | null;
   createdAt: string; updatedAt: string; events: DealEvent[];
   verdict?: { kind: string; reason: string; recall?: string | null };
   passportPath?: string | null;
@@ -39,12 +43,12 @@ async function safely<T>(what: string, fn: () => Promise<T>, ms = 8000): Promise
   }
 }
 
-export function recordHold(d: { dealId: string; listing: string; amountUsd: number; card: string | null; agent: string | null }) {
+export function recordHold(d: { dealId: string; listing: string; amountUsd: number; card: string | null; agent: string | null; authId?: string | null }) {
   return safely("recordHold", async () => {
     const c = await deals();
     if (!c) return false;
     const at = new Date().toISOString();
-    await c.insertOne({ _id: d.dealId, listing: d.listing, amountUsd: d.amountUsd, status: "HELD", card: d.card, agent: d.agent,
+    await c.insertOne({ _id: d.dealId, listing: d.listing, amountUsd: d.amountUsd, status: "HELD", card: d.card, agent: d.agent, authId: d.authId ?? null,
       createdAt: at, updatedAt: at, events: [{ at, status: "HELD", note: `Visa authorized $${d.amountUsd.toFixed(2)} with capture off` }] });
     return true;
   });
@@ -83,8 +87,9 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
 }
 
 /** Only fields a buyer and seller both see at the curb; no card data, no Visa ids. */
-export type PublicDeal = Omit<DealRecord, "_id"> & { dealId: string };
-const pub = (d: DealRecord): PublicDeal => { const { _id, ...rest } = d; return { dealId: _id, ...rest }; };
+export type PublicDeal = Omit<DealRecord, "_id" | "authId"> & { dealId: string };
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const pub = (d: DealRecord): PublicDeal => { const { _id, authId, ...rest } = d; return { dealId: _id, ...rest }; };
 
 export type DealLookup = { state: "ok"; deal: PublicDeal } | { state: "missing" } | { state: "unavailable" };
 
@@ -110,4 +115,24 @@ export async function board(limit = 20) {
       { $group: { _id: "$status", n: { $sum: 1 }, usd: { $sum: "$amountUsd" } } }]).toArray()).map((g) => [g._id, { n: g.n, usd: Math.round(g.usd * 100) / 100 }]));
     return { recent, byStatus };
   }, 4000);
+}
+
+/** Held deals older than the cutoff, oldest first, for the sweeper. */
+export function heldBefore(cutoffIso: string, limit = 25) {
+  return safely("heldBefore", async () => {
+    const c = await deals();
+    if (!c) return null;
+    return c.find({ status: "HELD", createdAt: { $lt: cutoffIso } }, { projection: { _id: 1, amountUsd: 1, createdAt: 1, authId: 1 }, sort: { createdAt: 1 }, limit }).toArray();
+  }, 6000);
+}
+
+/** Records a sweep result, only if the deal is STILL held (a pickup that settled meanwhile always wins). */
+export function recordSweep(dealId: string, status: "RELEASED" | "LAPSED" | "REFUSED", note: string) {
+  return safely("recordSweep", async () => {
+    const c = await deals();
+    if (!c) return false;
+    const at = new Date().toISOString();
+    const r = await c.updateOne({ _id: dealId, status: "HELD" }, { $set: { status, updatedAt: at }, $push: { events: { at, status, note } } });
+    return r.modifiedCount === 1;
+  });
 }
