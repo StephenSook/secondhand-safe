@@ -6,10 +6,18 @@ import { decide, settle } from "@/server/deals/settle";
 import { mongoClaims, settleOnce } from "@/server/deals/claim";
 import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
-import { recordSettlement } from "@/server/deals/store";
+import { getDeal, recordSettlement } from "@/server/deals/store";
 import { waitUntil } from "@vercel/functions";
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
+const FINAL = new Set(["CAPTURED", "REVERSED", "RELEASED", "LAPSED", "REFUSED"]);
+
+/** The deal record's status when it is already final (settled before claims existed, or by the sweeper). */
+async function finalStatus(dealId: string): Promise<string | null> {
+  const r = await getDeal(dealId);
+  if (r.state === "unavailable") throw new Error("the deal record could not be read");
+  return r.state === "ok" && FINAL.has(r.deal.status) ? r.deal.status : null;
+}
 
 /**
  * POST { token, model?, batch?, upc?, text?, cls? } -> the pickup decision, executed on the real hold:
@@ -17,7 +25,10 @@ const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "dr
  * Once a deal has settled, every later request returns that stored answer with `replayed: true` (no Visa call).
  * 409 `{settling: true, visaCalled: false}`: another request is settling this deal right now; this one did nothing.
  * 409 `{uncertain: true, status: "UNKNOWN", visaCalled: false}`: an earlier attempt never stored its result.
- * 503 `{visaCalled: false, placed: false}`: the one-settlement claim could not be taken, so Visa was not called.
+ * 409 `{final: true, status, visaCalled: false}`: the deal record already shows this deal ended; nothing was sent.
+ * 503 `{visaCalled: false, placed: false}`: the deal's state could not be read, so Visa was not called.
+ * A scan that moves no money returns its verdict with status UNKNOWN (`holdStateUnconfirmed`) when the deal's
+ * state could not be read, never HELD.
  */
 export async function POST(request: Request) {
   const b = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -67,7 +78,17 @@ export async function POST(request: Request) {
       visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },
       at: new Date().toISOString(),
     };
-  }, { store: await mongoClaims(), claim: decide(verdict) !== "hold" });
+  }, { store: await mongoClaims(), claim: decide(verdict) !== "hold", finalStatus: () => finalStatus(deal.dealId) });
+  if (outcome.kind === "unavailable" && decide(verdict) === "hold") {
+    return Response.json({ dealId: deal.dealId, amountUsd: deal.amountUsd, status: "UNKNOWN", verdict, holdStateUnconfirmed: true, visaCalled: false,
+      error: "The check ran, but the hold's state could not be confirmed (the deal store did not answer). No money moved from this scan." },
+      { headers: noStore });
+  }
+  if (outcome.kind === "final") {
+    return Response.json({ dealId: deal.dealId, status: outcome.status, final: true, visaCalled: false,
+      error: `This deal already ended (${outcome.status}), so nothing was sent to Visa.` },
+      { status: 409, headers: noStore });
+  }
   if (outcome.kind === "unavailable") {
     return Response.json({ dealId: deal.dealId, visaCalled: false, placed: false,
       error: "Could not start the settlement (the deal store did not answer). Nothing moved at Visa; try again in a moment." },

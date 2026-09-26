@@ -312,12 +312,19 @@ export function PickupScanner() {
     }
     const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
       { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string }; error?: string;
-        settling?: boolean; visaCalled?: boolean };
+        settling?: boolean; visaCalled?: boolean; final?: boolean; holdStateUnconfirmed?: boolean };
     if (req !== reqSeq.current) return;
     if (r.status === 409 && j.settling) {
       // another scan (the table kiosk, another phone) is settling this hold right now; this request did not reach Visa
       setBusy("");
       setElsewhere(true);
+      return;
+    }
+    if (r.status === 409 && j.final && j.status) {
+      // the deal record says this deal already ended; nothing was sent to Visa
+      setBusy("");
+      settleTo({ status: j.status });
+      setDealErr(j.error ?? `This deal already ended (${j.status}).`);
       return;
     }
     if (r.status === 503 && j.visaCalled === false) {
@@ -334,6 +341,7 @@ export function PickupScanner() {
       return;
     }
     setVerdict(j.verdict);
+    if (j.holdStateUnconfirmed && j.error) setDealErr(j.error);
     if (settling && j.status) settleTo({ status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason, passportPath: j.passport?.path, passportError: j.passport?.error });
     setBusy("");
     requestAnimationFrame(() => {

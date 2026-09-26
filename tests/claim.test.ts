@@ -71,13 +71,53 @@ describe("one settlement per deal", () => {
     expect(cap.kind).toBe("ran");
   });
 
-  it("without a store (Atlas not configured): no claim, so NO Visa call; a no-money scan still runs", async () => {
+  it("without a store (Atlas not configured): unavailable for every scan, and NO Visa call", async () => {
     const log = vi.fn();
     const calls: string[] = [];
     expect(await settleOnce("shs-6", visaCall("CAPTURED", "x", calls, 0), { store: null, claim: true, log })).toEqual({ kind: "unavailable" });
+    expect(await settleOnce("shs-6", visaCall("HELD", "needs-check", calls, 0), { store: null, claim: false, log })).toEqual({ kind: "unavailable" });
     expect(calls).toHaveLength(0);
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/refused before Visa/));
-    expect((await settleOnce("shs-6", visaCall("HELD", "needs-check", calls, 0), { store: null, claim: false, log })).kind).toBe("ran");
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/nothing sent to Visa/));
+  });
+
+  it("a deal the record already shows as final (a pre-claim settlement, the sweeper) is never settled again", async () => {
+    const store = memoryClaims<R>();
+    const calls: string[] = [];
+    const finalStatus = async () => "CAPTURED";
+    expect(await settleOnce("shs-10", visaCall("REVERSED", "legacy retry", calls, 0), { store, claim: true, finalStatus, log: quiet })).toEqual({ kind: "final", status: "CAPTURED" });
+    expect(await settleOnce("shs-10", visaCall("HELD", "needs-check", calls, 0), { store, claim: false, finalStatus, log: quiet })).toEqual({ kind: "final", status: "CAPTURED" });
+    expect(calls).toHaveLength(0);
+    expect(store.docs.has("shs-10")).toBe(false);
+  });
+
+  it("a deal record that cannot be read: unavailable, NO Visa call", async () => {
+    const store = memoryClaims<R>();
+    const calls: string[] = [];
+    const finalStatus = async (): Promise<string | null> => { throw new Error("record unreadable"); };
+    expect(await settleOnce("shs-11", visaCall("CAPTURED", "x", calls, 0), { store, claim: true, finalStatus, log: quiet })).toEqual({ kind: "unavailable" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a no-money scan never reports HELD over a settlement it can see: in flight is busy, finished is replayed", async () => {
+    const store = memoryClaims<R>();
+    let t = 9_000_000;
+    const now = () => t;
+    const sleep = async (ms: number) => { t += ms; };
+    const calls: string[] = [];
+    store.docs.set("shs-12", { _id: "shs-12", by: "capturing", at: t, expiresAt: t + CLAIM_TTL_MS });
+    expect(await settleOnce("shs-12", visaCall("HELD", "needs-check", calls, 0), { store, claim: false, now, sleep, log: quiet })).toEqual({ kind: "busy" });
+    store.docs.get("shs-12")!.result = { status: "CAPTURED", by: "capturing" };
+    expect(await settleOnce("shs-12", visaCall("HELD", "needs-check", calls, 0), { store, claim: false, now, sleep, log: quiet }))
+      .toEqual({ kind: "replayed", result: { status: "CAPTURED", by: "capturing" } });
+    // and a scan that starts while a capture is in flight waits for it, then gets its answer
+    const store2 = memoryClaims<R>();
+    const [cap, hold] = await Promise.all([
+      settleOnce("shs-13", visaCall("CAPTURED", "clean", calls, 40), { store: store2, claim: true, sleep: tick, log: quiet }),
+      tick(5).then(() => settleOnce("shs-13", visaCall("HELD", "needs-check", calls, 0), { store: store2, claim: false, sleep: tick, log: quiet })),
+    ]);
+    expect(cap.kind).toBe("ran");
+    expect(hold).toEqual({ kind: "replayed", result: { status: "CAPTURED", by: "clean" } });
+    expect(calls).toEqual(["CAPTURED:clean"]);
   });
 
   it("a store that fails before the claim is taken: NO Visa call", async () => {

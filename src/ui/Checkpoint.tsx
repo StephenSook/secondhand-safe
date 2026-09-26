@@ -257,11 +257,17 @@ export function Checkpoint() {
       }
       const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
         { dealId?: string; verdict?: Verdict; status?: DealStatus; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string };
-          error?: string; settling?: boolean; replayed?: boolean; visaCalled?: boolean };
+          error?: string; settling?: boolean; replayed?: boolean; visaCalled?: boolean; final?: boolean; holdStateUnconfirmed?: boolean };
       if (!current()) return;
       if (r.status === 409 && j.settling) {
         // another device is settling this hold right now; this request did not reach Visa. The record feed shows the result.
         setElsewhere(true);
+        return;
+      }
+      if (r.status === 409 && j.final && j.status) {
+        // the deal record says this deal already ended; nothing was sent to Visa
+        settleTo({ status: j.status });
+        setNote(j.error ?? `This deal already ended (${j.status}).`);
         return;
       }
       if (r.status === 503 && j.visaCalled === false) {
@@ -277,6 +283,7 @@ export function Checkpoint() {
       }
       const v = j.verdict;
       setScan((s) => (s?.id === id ? { ...s, verdict: v, replayed: !!j.replayed } : s));
+      if (j.holdStateUnconfirmed && j.error) setErr(j.error);
       if (j.replayed) setNote("This deal had already settled: this is its stored result. Visa was not called again.");
       if (j.status) settleTo({ status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason, passportPath: j.passport?.path, passportError: j.passport?.error });
     } finally {

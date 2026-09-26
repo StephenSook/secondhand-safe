@@ -26,7 +26,18 @@ describe("pickup route", () => {
     const j = await r.json();
     expect(r.status).toBe(200);
     expect(j.verdict.kind).toBe("UNREADABLE");
-    expect(j.status).toBe("HELD");
+    // no deal store here, so the hold's state cannot be confirmed: UNKNOWN, never HELD
+    expect(j).toMatchObject({ status: "UNKNOWN", holdStateUnconfirmed: true, visaCalled: false });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("REGRESSION: a corrupted recalled UPC plus an unrecognized model (066264914740 + ZZT9Q41X) never captures", async () => {
+    env();
+    const f = vi.fn(async () => { throw new Error("Visa must not be called"); });
+    vi.stubGlobal("fetch", f);
+    const j = await (await post({ token: token(), upc: "066264914740", model: "ZZT9Q41X" })).json();
+    expect(j.verdict.kind).toBe("NEEDS_CHECK");
+    expect(j.status).not.toBe("CAPTURED");
     expect(f).not.toHaveBeenCalled();
   });
 

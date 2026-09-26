@@ -16,8 +16,11 @@ import { getDb } from "@/server/db/mongo";
  *   have moved money, so the answer is "uncertain" (UNKNOWN), never a second Visa call. The deal record
  *   (recordSettlement) and Visa are where that outcome is confirmed;
  * - if the result cannot be stored after Visa answered, this caller still gets Visa's real answer, and later
- *   callers get "busy" and then "uncertain", never a made-up REFUSED.
- * A scan that moves no money (NEEDS_CHECK, UNREADABLE) never takes a claim and calls no Visa API.
+ *   callers get "busy" and then "uncertain", never a made-up REFUSED;
+ * - with no claim yet, the deal record is read before one is taken: a deal it already shows as final (settled
+ *   before claims existed, or by the sweeper) is answered from it ("final"), never settled again.
+ * A scan that moves no money (NEEDS_CHECK, UNREADABLE) never takes a claim and calls no Visa API, but it goes
+ * through the same reads, so it never reports HELD over a settlement it could have seen.
  */
 
 export const CLAIM_TTL_MS = 2 * 60 * 1000;
@@ -40,13 +43,16 @@ export type Outcome<R> =
   | { kind: "replayed"; result: R }
   | { kind: "busy" } // another request holds the claim right now
   | { kind: "unavailable" } // no claim could be taken: Visa was not called
-  | { kind: "uncertain" }; // an earlier attempt's outcome was never stored: Visa was not called
+  | { kind: "uncertain" } // an earlier attempt's outcome was never stored: Visa was not called
+  | { kind: "final"; status: string }; // the deal record already shows a final status: Visa was not called
 
 export interface ClaimOpts<R> {
   store: ClaimStore<R> | null;
   /** false for a scan that moves no money: it takes no claim, but still returns a settlement that already
    *  happened, and waits for one in progress */
   claim: boolean;
+  /** the deal record's status when it is final, else null; throws when the record cannot be read */
+  finalStatus?: () => Promise<string | null>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   requestId?: string;
@@ -65,14 +71,14 @@ export async function settleOnce<R>(dealId: string, run: () => Promise<R>, o: Cl
   // decide first, run after: run() is never inside the catch, so a store error can never repeat it
   let decision: "claimed" | "free" | Outcome<R>;
   try {
-    decision = store ? await decide(store) : o.claim ? { kind: "unavailable" } : "free";
+    decision = store ? await decide(store) : { kind: "unavailable" };
   } catch (e) {
     log(`[claims] claim store failed for ${dealId}: ${(e as Error).message}`);
-    decision = o.claim ? { kind: "unavailable" } : "free";
+    decision = { kind: "unavailable" };
   }
   if (decision === "free") return { kind: "ran", result: await run() }; // moves no money
   if (decision !== "claimed") {
-    if (decision.kind === "unavailable") log(`[claims] no claim for ${dealId}: settlement refused before Visa`);
+    if (decision.kind === "unavailable") log(`[claims] deal state for ${dealId} not readable: nothing sent to Visa`);
     return decision;
   }
   const result = await run();
@@ -89,11 +95,17 @@ export async function settleOnce<R>(dealId: string, run: () => Promise<R>, o: Cl
     const deadline = now() + WAIT_MS;
     for (;;) {
       const t = now();
-      if (o.claim && (await st.insert({ _id: dealId, by, at: t, expiresAt: t + CLAIM_TTL_MS }))) return "claimed";
       const cur = await st.get(dealId);
       if (cur?.result !== undefined) return { kind: "replayed", result: cur.result };
-      if (!cur && !o.claim) return "free"; // nothing settled or settling
       if (cur && cur.expiresAt <= t) return { kind: "uncertain" };
+      if (!cur) {
+        const status = o.finalStatus ? await o.finalStatus() : null;
+        if (status) return { kind: "final", status };
+        if (!o.claim) return "free"; // nothing settled or settling
+        if (await st.insert({ _id: dealId, by, at: t, expiresAt: t + CLAIM_TTL_MS })) return "claimed";
+        if (t >= deadline) return { kind: "busy" };
+        continue; // another request claimed it between the read and the insert: read again
+      }
       if (t >= deadline) return { kind: "busy" };
       await sleep(POLL_MS);
     }
