@@ -29,6 +29,7 @@ ml/data/
 ml/out/*
 !ml/out/metrics.json
 !ml/out/split.json
+!ml/out/finetune_b2.json
 data/raw/
 mobile/.expo/
 mobile/ios/

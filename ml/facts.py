@@ -14,6 +14,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 
+def fine_tune():
+    """The deep fine-tune (ml/finetune.py) on the same held-out split. Reported as an experiment, not shipped."""
+    p = os.path.join(HERE, "out", "finetune_b2.json")
+    if not os.path.exists(p):
+        return None
+    f = json.load(open(p))
+    c = f["confusion"]
+    return {"what": f["what"], "macroF1": f["macro_f1"], "macroF1Ci95": f["macro_f1_ci95"],
+            "falseAlarmsOnOrdinary": sum(c[3][:3]), "ordinaryHeldOut": sum(c[3]), "shipped": False,
+            "why": "within the confidence interval of the shipped head; shipping it would mean a custom 90 MB model on the phone"}
+
+
 def main():
     metrics = json.load(open(os.path.join(HERE, "out", "metrics.json")))
     stats = json.load(open(os.path.join(ROOT, "data", "recall_stats.json")))
@@ -46,6 +58,7 @@ def main():
             "ordinaryHeldOut": sum(ordinary),
             "embeddings": metrics["train_info"]["clip"].get("embeddings"),
         },
+        "fineTuneExperiment": fine_tune(),
         "recallIndex": {k: stats.get(k) for k in ("recallsFetched", "nurseryRecalls", "nhtsaChildSeatCampaigns", "withAnyIdentifier", "identifiers")},
     }
     os.makedirs(os.path.join(ROOT, "docs"), exist_ok=True)
