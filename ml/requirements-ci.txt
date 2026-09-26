@@ -1,0 +1,5 @@
+numpy>=1.26
+scikit-learn>=1.5
+joblib>=1.4
+requests>=2.32
+pytest>=8
