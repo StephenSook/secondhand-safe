@@ -68,4 +68,10 @@ describe("shopping agent catalog (real scanned listings)", () => {
     const unknown = await agentCheckout(new Request("http://x/api/agent/checkout", { method: "POST", body: JSON.stringify({ listingId: "nope" }) }));
     expect(unknown.status).toBe(404);
   });
+
+  it("free text only buys an item on our demo table, never a catalog title", async () => {
+    const red = CATALOG.find((l) => prescreen(l).tone === "red")!;
+    const r = await agentCheckout(new Request("http://x/api/agent/checkout", { method: "POST", body: JSON.stringify({ listing: red.title.slice(0, 80), amountUsd: 20 }) }));
+    expect(r.status).toBe(400);
+  });
 });

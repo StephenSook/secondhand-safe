@@ -3,6 +3,7 @@ import { agentKey } from "@/server/tap/agent";
 import { signRequest } from "@/server/tap/tap";
 import { byId, prescreen } from "@/server/shop/catalog";
 import { underLimit } from "@/server/visa/microform";
+import { DEMO_TABLE } from "@/core/demoTable";
 
 /**
  * Our shopping agent buying on the parent's behalf. It signs a checkout request with Trusted Agent Protocol
@@ -20,8 +21,15 @@ export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   if (!underLimit(`agent:${ip}`, 20)) return Response.json({ error: "Too many agent checkouts; wait a minute." }, { status: 429 });
   const b = (await request.json().catch(() => null)) as { listingId?: string; listing?: string; amountUsd?: number; tamper?: boolean } | null;
-  let listing = typeof b?.listing === "string" ? b.listing.slice(0, 80) : "Harppa high chair (table prop)";
-  let amountUsd = typeof b?.amountUsd === "number" ? b.amountUsd : 64;
+  let listing: string = DEMO_TABLE[0].label;
+  let amountUsd: number = DEMO_TABLE[0].amountUsd;
+  if (typeof b?.listingId !== "string" && (b?.listing !== undefined || b?.amountUsd !== undefined)) {
+    // free text is only for the items on our demo table; anything else must be a pre-screened catalog listing
+    const item = DEMO_TABLE.find((d) => d.label === b?.listing && d.amountUsd === b?.amountUsd);
+    if (!item) return Response.json({ error: "The agent only buys a catalog listing (listingId) or an item on our demo table." }, { status: 400 });
+    listing = item.label;
+    amountUsd = item.amountUsd;
+  }
   if (typeof b?.listingId === "string") {
     const l = byId.get(b.listingId);
     if (!l) return Response.json({ error: "Unknown listing." }, { status: 404 });

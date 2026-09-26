@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CardFields, type CardState } from "./CardFields";
+import { DEMO_TABLE } from "@/core/demoTable";
 import type { Verdict } from "@/core/verdict";
 import { VERDICT_LABEL, CAPTURABLE } from "@/core/verdict";
 import type { ClipHead, ClassifyResult } from "@/core/clipHead";
@@ -16,13 +17,11 @@ type Deal = {
   status: "HELD" | "CAPTURED" | "REVERSED" | "REFUSED" | "UNKNOWN"; settlementId?: string; reason?: string; at: string;
   /** which card Visa held: the parent's Microform entry, or the sandbox test card (agent path, or no fields) */
   card?: "microform" | "sandbox-test-card";
+  /** Solana devnet item passport written at capture: a link to verify it, or why it was not written */
+  passportPath?: string; passportError?: string;
 };
 const DEAL_KEY = "shs-deal";
-const LISTINGS = [
-  { label: "Harppa high chair (table prop with the printed CPSC 26-061 label)", amountUsd: 64 },
-  // not $40.00: the sandbox simulator returns AVS_FAILED / PENDING_REVIEW for that exact amount
-  { label: "Used baby item from our table", amountUsd: 45 },
-];
+const LISTINGS = DEMO_TABLE;
 const CLASS_NAME: Record<string, string> = {
   inclined_or_inbed_sleeper: "infant sleeper", crib_bumper: "crib bumper", drop_side_crib: "drop-side crib", other: "no banned type",
 };
@@ -222,7 +221,7 @@ export function PickupScanner() {
       return;
     }
     const j = (await r.json().catch(() => ({ error: `The server answered HTTP ${r.status} without a result.` }))) as
-      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; error?: string };
+      { verdict?: Verdict; status?: Deal["status"]; visa?: { id?: string; reason?: string }; passport?: { path?: string; error?: string }; error?: string };
     if (!r.ok || !j.verdict) {
       setBusy("");
       // 400 (our validation), 403 (bad token) and 503 (no Visa keys) are answered before Visa is called
@@ -231,7 +230,7 @@ export function PickupScanner() {
       return;
     }
     setVerdict(j.verdict);
-    if (settling && j.status) settleTo({ status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason });
+    if (settling && j.status) settleTo({ status: j.status, settlementId: j.visa?.id, reason: j.visa?.reason, passportPath: j.passport?.path, passportError: j.passport?.error });
     setBusy("");
     requestAnimationFrame(() => {
       if (prefersReducedMotion() || !decisionRef.current) return;
@@ -323,6 +322,8 @@ export function PickupScanner() {
                 {deal.card && <><dt>card</dt><dd>{deal.card === "microform" ? "entered in Visa Microform (tokenized)" : "Visa sandbox test card"}</dd></>}
                 {deal.settlementId && (deal.status === "CAPTURED" || deal.status === "REVERSED") && (<><dt>{deal.status === "CAPTURED" ? "capture" : "reversal"}</dt><dd className="break-all">{deal.settlementId}</dd></>)}
                 <dt>deal</dt><dd className="break-all">{deal.dealId}</dd>
+                {deal.passportPath && <><dt>passport</dt><dd><a href={deal.passportPath} className="underline font-bold">Solana devnet record</a></dd></>}
+                {deal.passportError && <><dt>passport</dt><dd>{deal.passportError}</dd></>}
               </dl>
               {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}){deal.reason === "MISSING_AUTH" ? ": this hold was already settled or is not open" : ""}. Visa did not apply it.</p>}
               {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
