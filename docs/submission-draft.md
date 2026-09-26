@@ -95,7 +95,21 @@ TODO (Stephen): one or two sentences on why this one matters to you.
 
 ## What we learned
 
-TODO (Stephen and Tylin): write this one yourselves. Judges weigh it; do not leave it empty.
+DRAFT (written from what actually happened this weekend; Stephen and Tylin, rewrite it in your own words):
+
+- The danger is not where we first looked. We expected banned sleepers all over eBay. Our scan of 1662 real
+  listings found about one. The big marketplaces already filter the text they can read. The problem is at the
+  handoff, when cash or a card moves for an item nobody has looked at closely.
+- A model is only as good as the mistakes you feed back. Our first pass on real listings flagged crib skirts
+  and dollhouse furniture. We reviewed every flag by hand, added the false alarms to training, and the flags
+  went from 39 to 9 without touching the test set.
+- Money code needs someone trying to break it. Review rounds found bugs our tests did not, like model numbers
+  such as "4340" that several brands share, and brand names like "Summer" and "Gap" that show up in ordinary
+  listing text. We changed the rule so a short number never moves money on its own.
+- Visa's hold is the right tool. Authorize with capture off, then capture or reverse, is how hotels and gas
+  pumps already work, and it fits a parking-lot sale exactly.
+- You can use a cloud model without a stored key. Our server proves who it is to Google with a short-lived
+  identity token, so there is no Gemini key sitting in our settings.
 
 ## What's next
 
