@@ -95,10 +95,14 @@ on a phone: install Expo Go, then `cd mobile && npm install && npx expo start` a
 
 ## Status and honesty
 
-Live on this deployment today: the CPSC recall index and matcher, the classifier, the pickup scan's
-barcode and on-device model. The Visa Acceptance hold, MongoDB Atlas, the Gemini label reader, ElevenLabs
-voice and the Solana passport are wired as each gets keys; `/judge` shows which are live, read from the
-server's configuration, so nothing is claimed early.
+Live on this deployment (checked with `GET /api/health`, which reads the server's configuration and
+reports every integration as true or false, so nothing is claimed early): the CPSC and NHTSA recall index
+and matcher, the classifier, the Visa Acceptance sandbox hold (Microform, Token Management Service, card-
+linked promotions), the Trusted Agent Protocol, MongoDB Atlas (deal store, board, seller view, Trust and
+Safety console at `/trust`), the Gemini label reader (keyless: Vercel OIDC to Google Cloud Workload
+Identity Federation), ElevenLabs voice, the Solana devnet passport, and a daily hold sweeper.
+Sandbox only: no real money moves. The deals on `/board` and `/trust` are our own demo purchases and our
+automated end-to-end tests, which run against this live site.
 
 Team: Stephen Sookra (frontend, AI/ML, mobile) and Tylin (backend). HackGT 13, Sep 25-27 2026. Plan:
 [PLAN.md](PLAN.md).
