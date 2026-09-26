@@ -25,7 +25,10 @@ venv/
 *.swp
 *.log
 ml/data/
-ml/out/*.npz
+!ml/out/
+ml/out/*
+!ml/out/metrics.json
+!ml/out/split.json
 data/raw/
 mobile/.expo/
 mobile/ios/
