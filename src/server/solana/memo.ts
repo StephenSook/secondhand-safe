@@ -70,6 +70,17 @@ async function rpc<T>(method: string, params: unknown[], f: typeof fetch, timeou
 export const recordHash = (recordJson: string) => createHash("sha256").update(recordJson, "utf8").digest("hex");
 export const passportMemo = (dealId: string, hashHex: string) => `lullabuy passport v1 deal=${dealId} record=sha256:${hashHex}`;
 
+/**
+ * The public pickup record a passport proves. It travels base64url-encoded in the passport link, which public deal
+ * views carry, so it holds no Visa identifier and no personal data: this signature cannot take one. (Records written
+ * before 2026-09-26 also carried the Visa capture id; their memos still verify, since the hash covers them as written.)
+ */
+export function passportRecord(r: { dealId: string; amountUsd: number; verdict: string; reason: string; indexAsOf: string;
+  label: { model: string | null; batch: string | null; date: string | null; upc: string | null }; at: string }): string {
+  return JSON.stringify({ v: 1, dealId: r.dealId, amountUsd: r.amountUsd, verdict: r.verdict, reason: r.reason, indexAsOf: r.indexAsOf,
+    label: { model: r.label.model, batch: r.label.batch, date: r.label.date, upc: r.label.upc }, at: r.at });
+}
+
 /** Sends the memo; returns the transaction signature. Throws with Solana's reason (for example an unfunded payer). */
 export async function anchor(secretB58: string, memo: string, f: typeof fetch = fetch): Promise<string> {
   const kp = keypairFromB58(secretB58);

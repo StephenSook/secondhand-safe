@@ -4,7 +4,7 @@ import { visaCreds } from "@/server/visa/creds";
 import { verifyDealToken } from "@/server/deals/token";
 import { settle } from "@/server/deals/settle";
 import type { ProductClass } from "@/core/verdict";
-import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
+import { anchor, passportMemo, passportRecord, recordHash } from "@/server/solana/memo";
 import { recordSettlement } from "@/server/deals/store";
 import { mintPassport } from "@/server/solana/mints";
 import { waitUntil } from "@vercel/functions";
@@ -42,11 +42,9 @@ export async function POST(request: Request) {
   let passport: { signature: string; path: string } | { error: string } | undefined;
   const sol = process.env.SOLANA_SECRET_KEY_B58?.trim();
   if (out.status === "CAPTURED" && sol) {
-    const record = JSON.stringify({
-      v: 1, dealId: deal.dealId, amountUsd: deal.amountUsd, verdict: verdict.kind, reason: verdict.reason, indexAsOf: verdict.asOf,
-      label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null },
-      visaCapture: out.visa?.id ?? null, at: new Date().toISOString(),
-    });
+    // public (the link travels on public deal views): no Visa id; the response below still gives the buyer the capture id
+    const record = passportRecord({ dealId: deal.dealId, amountUsd: deal.amountUsd, verdict: verdict.kind, reason: verdict.reason, indexAsOf: verdict.asOf,
+      label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null }, at: new Date().toISOString() });
     try {
       const sha = recordHash(record);
       const signature = await anchor(sol, passportMemo(deal.dealId, sha));
