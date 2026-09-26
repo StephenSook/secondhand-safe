@@ -126,11 +126,12 @@ export function heldBefore(cutoffIso: string, limit = 25) {
     const c = await deals();
     if (!c) return null;
     // never-attempted deals first, so holds Visa keeps not answering for can never block newer ones
-    return c.find({ status: "HELD", createdAt: { $lt: cutoffIso } }, { projection: { _id: 1, amountUsd: 1, createdAt: 1, authId: 1 }, sort: { sweepAttemptAt: 1, createdAt: 1 }, limit }).toArray();
+    return c.find({ status: "HELD", createdAt: { $lt: cutoffIso } }, { projection: { _id: 1, amountUsd: 1, createdAt: 1, authId: 1, sweepAttemptAt: 1 }, sort: { sweepAttemptAt: 1, createdAt: 1 }, limit }).toArray();
   }, 6000);
 }
 
-/** A release Visa did not confirm: the deal stays HELD, stamped so the next run tries other deals first. */
+/** Marks a deal as attempted (before its Visa call, and when Visa did not confirm): it stays HELD and later runs try
+ *  other deals first. */
 export function recordSweepAttempt(dealId: string) {
   return safely("recordSweepAttempt", async () => {
     const c = await deals();
