@@ -62,6 +62,15 @@ export async function POST(request: Request) {
   const cardKind = saved ? "saved-card" : tt ? "microform" : "sandbox-test-card";
   const dealId = newDealId();
   const auth = await authorize(creds, { dealId, amountUsd, source, saveCard });
+  // A reply that is not a full AUTHORIZED but carries an authorization id and a held amount (PARTIAL_AUTHORIZED)
+  // is a hold: release it, and say no hold was placed only when Visa confirms the release.
+  if (auth.status !== "AUTHORIZED" && auth.id && (auth.status === "PARTIAL_AUTHORIZED" || (auth.authorizedUsd ?? 0) > 0)) {
+    const rel = await reverse(creds, auth.id, { dealId, amountUsd: auth.authorizedUsd ?? amountUsd, reason: "partial authorization not accepted" });
+    return Response.json(rel.ok
+      ? { placed: false, error: `Visa held only part of the price (${auth.status}); that hold was released. Nothing was charged.`, visa: { status: auth.status, httpStatus: auth.httpStatus } }
+      : { uncertain: true, error: `Visa held part of the price (${auth.status}) and did not confirm the release. A hold MAY remain; it lapses on its own if nobody captures it.`, visa: { status: auth.status, httpStatus: auth.httpStatus } },
+      { status: 502 });
+  }
   if (auth.status !== "AUTHORIZED" || !auth.id) {
     // AUTHORIZED_PENDING_REVIEW (any AUTHORIZED*, or AUTHORIZED without an id) can mean a hold exists; a readable
     // DECLINED comes back as 201 too and means no hold, so 2xx alone is not "unsure".
