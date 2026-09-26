@@ -124,9 +124,9 @@ DRAFT (written from what actually happened this weekend; Stephen and Tylin, rewr
 
 ## Try it
 
-- Live: https://secondhand-safe-web.vercel.app (judges: /judge). TODO: lullabuy.tech once registered.
-- `curl "https://secondhand-safe-web.vercel.app/api/check?model=BHC001&batch=202408"`
-- MCP: `{"mcpServers":{"lullabuy":{"type":"http","url":"https://secondhand-safe-web.vercel.app/api/mcp"}}}`
+- Live: https://lullabuy.tech (judges: /judge). Also at https://secondhand-safe-web.vercel.app.
+- `curl "https://lullabuy.tech/api/check?model=BHC001&batch=202408"`
+- MCP: `{"mcpServers":{"lullabuy":{"type":"http","url":"https://lullabuy.tech/api/mcp"}}}`
 
 ## Built with
 
