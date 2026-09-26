@@ -115,6 +115,9 @@ describe("short all-digit model numbers never move money on their own (real Delt
   it("an uncertain recall hit never hides a banned type (Delta 4340 photographed as a drop-side crib)", () => {
     expect(checkLabel({ model: "4340", cls: { cls: "drop_side_crib", p: 0.9 } }).kind).toBe("BANNED_TYPE");
   });
+  it("an OCR letter O inside a number is still a short number (O2800)", () => {
+    expect(checkLabel({ model: "O2800" }).reason).toMatch(/confirm the brand/);
+  });
   it("letter models that fold to digits are still letter models (Deux par Deux L524, CPSC 10194)", () => {
     expect(checkLabel({ model: "L524" }).kind).toBe("RECALL_MATCH");
   });

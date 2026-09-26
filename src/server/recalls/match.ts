@@ -4,7 +4,8 @@ import type { ProductClass, RecallDoc, Verdict } from "@/core/verdict";
 
 /**
  * Recall matcher (PLAN 1.3) over the index built by data/build_recall_index.py from the CPSC recall API.
- * Order of precedence: a recall match beats a banned type, which beats a type that needs a check.
+ * Order of precedence: a confirmed recall match, then a banned type, then an uncertain recall hit (NEEDS_CHECK),
+ * then the classifier's own checks (see checkLabel).
  */
 
 const RECALLS = recallsJson as unknown as RecallDoc[];
@@ -115,7 +116,7 @@ function recallLookup(input: LabelInput): Verdict | undefined {
     // ("Summer", "Gap", "Place") that listing text mentions anyway. So it never moves money on its own: the hold
     // waits for a person to confirm the brand on the label. Tested on the label as printed, not the OCR fold,
     // so "L524" (a letter model) is not treated as a bare number.
-    if (/^\d{4,6}$/.test(input.model.replace(/[^A-Za-z0-9]/g, ""))) {
+    if (/^\d{4,6}$/.test(input.model.replace(/[^A-Za-z0-9]/g, "").replace(/[Oo]/g, "0"))) { // an OCR "O" among digits is a zero
       const e = pick(hit);
       const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";
       return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "model", value: input.model, recallValue: e.value }, asOf: INDEX_AS_OF,
