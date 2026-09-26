@@ -92,8 +92,8 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 1.1 | Trusted Agent Protocol sign + verify + tamper tests | `src/server/tap/tap.ts`, `tests/tap.test.ts` | **Stephen** | ✅ | 0.3 | Merged PR #10 + review fixes (signature before nonce, capped nonce, identity+integrity wording, $200 agent cap). Prod needs TAP key pushed. | | | |
 | 1.2 | Recall index: CPSC + NHTSA → Atlas, with a 20-record hand check | `data/build_recall_index.py`, `data/handcheck.md` | **Stephen** | ✅ | 0.5 | 6,036 CPSC recalls -> 1,137 nursery. Gemini 3.5 Flash pass (Vertex, Sat 8 AM): 449 -> 822 with identifiers, values kept only if verbatim in the recall. Short numeric models need the brand. data/handcheck.md. | |
 | 1.3 | Verdict rules + fuzzy matcher (O/0, I/1 folding) | `src/core/verdict.ts`, `src/server/recalls/match.ts` | **Stephen** | ✅ | 1.2 | src/server/recalls/match.ts + tests: folding, batch rule (26-061 recalls BHC001 only in batch 202408), D3 rules, junk-id guard. | |
-| 1.4 | Atlas indexes + change stream → `/api/stream` (SSE) | `src/server/db/mongo.ts`, `src/app/api/stream/route.ts` | **Tylin** | 🟡 | 0.5 | Atlas deals collection live (3.11). Change stream -> SSE is 5.3. |
-| 1.5 | Deal state machine + `/api/checkout` + `/api/pickup` + hold sweeper | `src/server/deals/machine.ts`, `src/app/api/{checkout,pickup,cron}/**` | **Stephen** | 🟡 | 0.6, 1.1, 1.3 | Stateless deal token + 4 review rounds. Hold sweeper is 5.4. |
+| 1.4 | Atlas indexes + change stream → `/api/stream` (SSE) | `src/server/db/mongo.ts`, `src/app/api/stream/route.ts` | **Tylin** | 🟡 | 0.5 | Atlas deals live; board refreshes every 3 s from /api/deals. A change-stream push (5.3) is not built. |
+| 1.5 | Deal state machine + `/api/checkout` + `/api/pickup` + hold sweeper | `src/server/deals/machine.ts`, `src/app/api/{checkout,pickup,cron}/**` | **Stephen** | ✅ | 0.6, 1.1, 1.3 | Deal token + settle + hold sweeper (5.4) done. |
 | 1.6 | Listing harvest (1,000+ real listings, eBay + Craigslist Atlanta) | `ml/harvest.py` | **Stephen** | ✅ | 0.5 | 1,662 listings (613 Craigslist, 1,049 eBay) + 243 CPSC photos, contact info redacted. Loads into Atlas `listings` once 0.5 exists. Finding: eBay already filters bumpers and Rock 'n Plays. |
 | 1.7 | Classifier dataset + training + eval vs zero-shot | `ml/embed.py`, `ml/train.py`, `ml/eval.py`, `ml/labels.csv` | **Stephen** | ✅ | 1.6 | Head now trained on transformers.js q8 embeddings (the phone runtime). Held-out macro-F1 0.724 [0.60, 0.81] vs 0.558 zero-shot; 2/107 vs 38/107 false alarms. Numbers live in docs/FACTS.json. | |
 | 1.8 | Label reader: Gemini vision JSON + boxes, OpenAI fallback | `src/server/ml/label.ts`, `tests/label.live.test.ts` | **Stephen** | ✅ | 0.5 | Live via Vertex on a real CPSC label photo (KMART 07-1248 -> recall 11020, tests/label.live.test.ts). Prod needs a Gemini key on a funded project (see 0.5). | |
@@ -150,22 +150,25 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
-| 5.1 | Live probe: red since the rebrand (it grepped the old name); now both origins + Atlas deals + MCP | `.github/workflows/probe.yml` | **Stephen** | 🟡 | n/a | PR #24. Production was healthy the whole time. |
-| 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | ⬜ | 3.11 | MongoDB depth + Oracle. A look-alike is a prompt to read the label, never a verdict (D2). |
-| 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Replaces 3 s polling; reconnects with a resume token. |
-| 5.4 | Hold sweeper: Vercel cron reverses holds past their window; the board shows RELEASED | `src/app/api/cron/**`, `vercel.json` | **Stephen** | ⬜ | 1.5 | An abandoned pickup never leaves a parent's money held. |
-| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11, 3.12 | Visa post-purchase stage. iOS push needs the Home Screen app. |
-| 5.6 | ElevenLabs conversational shopping agent (Agents Platform) with a server tool calling `/api/shop`, EN + ES | `src/ui/VoiceAgent.tsx`, `scripts/elevenlabs-agent.mjs` | **Stephen** | ⬜ | 2.7 | ElevenLabs depth: a conversation, not only TTS. |
-| 5.7 | Solana passport as a Metaplex Core asset with Attributes (verdict, index date, record hash), updated on recall | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | The Memo stays as the audit trail. |
-| 5.8 | `/trust` Trust and Safety console: reversals by reason, disputes avoided, flag trend, drawn with Visa Chart Components | `src/app/trust/**` | **Stephen** | ⬜ | 5.3 | The buyer persona (marketplace T&S + payments). Numbers come from Atlas, never typed. |
-| 5.9 | "Without vs With" replay: the same deal on a cash marketplace vs a held Visa payment | `src/app/board/**` | **Stephen** | ⬜ | 5.3 | 15 s between demo beats. |
-| 5.10 | Second trained model: YOLO label finder (box the label, crop, then read); report read rate with and without it | `ml/**` | **Stephen** | ⬜ | 1.8 | Gemini auto-boxes + a human spot check. |
-| 5.11 | Claims audit: every named product grepped in shipped code; `.env.example` parity; gitleaks over full history | `docs/claims-audit.md` | **Stephen** | ⬜ | all | Re-run after each feature. |
-| 5.12 | `/checkpoint` table kiosk: big verdict, keyboard-wedge barcode input, a sound per state; NFC if the reader arrives | `src/app/checkpoint/**` | **Stephen** | ⬜ | 1.9 | Works with no hardware; hardware only adds. |
-| 5.13 | Stills of every judge screen (desktop + phone) from lullabuy.tech, each looked at | `docs/stills/` | **Stephen** | ⬜ | 5.2-5.12 | |
-| 5.14 | Adversarial review of every new diff, repeated until a clean round | n/a | **Stephen** | ⬜ | each | Fresh-context reviewers (other model families are out of quota). |
-| 5.15 | Devpost project drafted through the Devpost connector, NOT submitted | n/a | **Stephen** | ⬜ | 5.11 | Stephen reviews it and presses submit himself. |
-| 5.16 | Demo video (after 5.1-5.14; loudness + duration measured) | `docs/video/` | **Stephen** | ⬜ | 5.13 | Held until the product is complete (Stephen, Sat). |
+| 5.1 | Live probe: red since the rebrand (it grepped the old name); now both origins + Atlas deals + MCP | `.github/workflows/probe.yml` | **Stephen** | ✅ | n/a | PR #24 merged; both origins green (verified by hand and in Actions). |
+| 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | 🟡 | 3.11 | PR #32 open: Atlas index img_vec READY (1,101 recall + 1,662 listing photos), /api/lookalike, card on /pickup. Held-out eval: right recall first 41.7%, top-3 47.2% (144 photos, ml/out/lookalike_eval.json). Resemblance never flags anything. |
+| 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Not started. /board polls every 3 s, which works for the demo. |
+| 5.4 | Hold sweeper: Vercel cron reverses holds past their window; the board shows RELEASED | `src/app/api/cron/**`, `vercel.json` | **Stephen** | ✅ | 1.5 | PR #28 merged + deployed. Daily Vercel cron 13:17 UTC (9:17 AM ET). 3 review rounds (Claude x2, Grok). Verified live: 401 without CRON_SECRET, 200 with it. |
+| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11, 3.12 | Not started (needs label fields stored per deal + web push). |
+| 5.6 | ElevenLabs conversational shopping agent (Agents Platform) with a server tool calling `/api/shop`, EN + ES | `src/ui/VoiceAgent.tsx`, `scripts/elevenlabs-agent.mjs` | **Stephen** | 🟡 | 2.7 | PR #27 open. Agent live on ElevenLabs (agent_8801m3fcg0refz5bv8znkf1a1vr6, 180 s cap, auth allowlist). Codex rounds 1-3 fixed; round 4 running. Merge after a clean round. |
+| 5.7 | Solana passport as a Metaplex Core asset with Attributes (verdict, index date, record hash), updated on recall | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | Not started. Memo passport (3.12) is live and verifiable. |
+| 5.8 | `/trust` Trust and Safety console: reversals by reason, disputes avoided, flag trend, drawn with Visa Chart Components | `src/app/trust/**` | **Stephen** | ✅ | 5.3 | PR #30 merged + deployed: /trust and /api/trust, live from Atlas, says plainly the deals are our demos and e2e tests. |
+| 5.9 | "Without vs With" replay: the same deal on a cash marketplace vs a held Visa payment | `src/app/board/**` | **Stephen** | ⬜ | 5.3 | Not started. |
+| 5.10 | Second trained model: YOLO label finder (box the label, crop, then read); report read rate with and without it | `ml/**` | **Stephen** | ⬜ | 1.8 | Not started. |
+| 5.11 | Claims audit: every named product grepped in shipped code; `.env.example` parity; gitleaks over full history | `docs/claims-audit.md` | **Stephen** | 🟡 | all | README status + submission draft brought in line with /api/health (PR #31). Full claims audit still to run before submit. |
+| 5.12 | `/checkpoint` table kiosk: big verdict, keyboard-wedge barcode input, a sound per state; NFC if the reader arrives | `src/app/checkpoint/**` | **Stephen** | ⬜ | 1.9 | Not started (hardware not collected). |
+| 5.13 | Stills of every judge screen (desktop + phone) from lullabuy.tech, each looked at | `docs/stills/` | **Stephen** | ⬜ | 5.2-5.12 | After #27 and #32 merge. |
+| 5.14 | Adversarial review of every new diff, repeated until a clean round | n/a | **Stephen** | 🟡 | each | Every merged money-path diff had 2-3 adversarial rounds (Claude, Codex, Grok). |
+| 5.15 | Devpost project drafted through the Devpost connector, NOT submitted | n/a | **Stephen** | ⬜ | 5.11 | Stephen presses submit; draft is docs/submission-draft.md. |
+| 5.16 | Demo video (after 5.1-5.14; loudness + duration measured) | `docs/video/` | **Stephen** | ⬜ | 5.13 | Held until the product is complete (Stephen). |
+| 5.17 | EAS builds: iOS store build (TestFlight-ready), iOS simulator build, Android APK | `mobile/eas.json` | **Stephen** | ✅ | 3.14 | PR #26. APK on GitHub Release mobile-v1.0.0 (verified download). Simulator build launched and loaded live deals. TestFlight upload is a separate step. |
+| 5.18 | Rate limit on unsigned /api/checkout (20/min per IP, per instance) | `src/app/api/checkout/route.ts` | **Stephen** | ✅ | 1.5 | PR #31. Measured live: 28 of 60 rapid calls refused; the limit is per server instance, so treat it as a speed bump. |
+| 5.19 | Self-hosted fonts (build no longer downloads Google Fonts) | `src/app/fonts/**` | **Stephen** | ✅ | n/a | PR #29. A font download flake had turned main red; production verified serving the 3 local WOFF2 files. |
 
 ### Human-only steps (account creation, sign-ins, physical parts: Claude cannot do these)
 
@@ -191,18 +194,30 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 ---
 
+## Open pull requests (read before touching these files)
+
+| PR | What | State | Merge rule |
+|---|---|---|---|
+| #27 | ElevenLabs voice agent on /shop + duplicate-hold guard | Codex round 4 running | merge only after a clean review round and green CI |
+| #32 | Atlas Vector Search look-alike on /pickup | CI running | merge after green CI; then deploy |
+
+Deploys are manual (no Git auto-deploy): from a clean `git worktree add --detach <dir> origin/main`, copy `.vercel/`,
+check `projectName` is `secondhand-safe-web`, then `npx vercel --prod --yes`. Verify with the probe (both origins).
+
+---
+
 ## Shared Contracts
 
-| Contract | Owner | Consumers | Definition |
+| Contract | Owner | Consumers | Definition (read from the code, 2026-09-26) |
 |---|---|---|---|
-| `Verdict` | Tylin | Stephen (UI, voice, mobile) | `{kind: "RECALL_MATCH"\|"BANNED_TYPE"\|"NO_MATCH"\|"UNREADABLE"\|"NEEDS_CHECK", recall?: RecallDoc, reason: string, asOf: string}` |
-| `readLabel()` output | Stephen | Tylin (`/api/pickup`) | `{readable, brand?, model?, batch?, date?, boxes:[{field,x,y,w,h}], ms}` |
-| `classify()` output | Stephen | Tylin (matcher), Stephen (UI) | `{cls: "inclined_or_inbed_sleeper"\|"crib_bumper"\|"drop_side_crib"\|"other", p, probs}` |
-| `POST /api/checkout` | Tylin | Stephen (shop, agent) | body `{listingId, amountUsd, transientTokenJwt?}` + TAP headers → `{dealId, status:"HELD", authId}` |
-| `POST /api/pickup` | Tylin | Stephen (pickup, kiosk, mobile) | body `{dealId, label, photoB64?}` → `{status:"CAPTURED"\|"REVERSED"\|"HELD", verdict}` |
-| `GET /api/stream` (SSE) | Tylin | Stephen (board) | `event: deal`, data = the full deal document |
-| Deal document | Tylin | Stephen | `{_id, listingId, amountUsd, status, authId, captureId?, reversalId?, verdict?, passport?, holdUntil, history:[...]}` |
-| `docs/FACTS.json` | Stephen | everyone | `{scanned, flagged, precisionReviewed, classifier:{macroF1, zeroShotMacroF1}, asOf}` |
+| `Verdict` | Tylin | Stephen (UI, voice, mobile) | `{kind: "RECALL_MATCH"\|"BANNED_TYPE"\|"NO_MATCH"\|"UNREADABLE"\|"NEEDS_CHECK", recall?, reason, asOf}` (`src/core/verdict.ts`) |
+| `POST /api/checkout` | Tylin | Stephen (pickup, shop, agent) | body `{listing, amountUsd, transientTokenJwt? \| savedCard?, saveCard?}`, optional TAP signature headers. 200: `{dealId, listing, amountUsd, askedUsd?, promotion?, status:"HELD", card, visa:{authId,...}, token, at}`. Errors carry `placed:false` (no hold) or `uncertain:true` (a hold MAY exist). |
+| `POST /api/agent/checkout` | Tylin | Stephen (shop, voice) | body `{listingId}` (catalog) or a demo-table item; signs with TAP and calls /api/checkout; returns `{merchant, request}`. Red listings refused. |
+| `POST /api/pickup` | Tylin | Stephen (pickup, mobile) | body `{token, model?, batch?, date?, upc?, text?, cls?}` -> `{verdict, status:"CAPTURED"\|"REVERSED"\|"HELD"\|"REFUSED"\|"UNKNOWN", visa?, passport?}` |
+| `GET /api/cron/sweep` | Tylin | Vercel Cron | `Authorization: Bearer $CRON_SECRET`; releases holds older than 24 h |
+| `POST /api/lookalike` | Stephen | pickup, shop | `{embedding:number[512]}` or `?listingId=` -> `{matches:[{recallNumber,title,notice,image,cosine,strong}]}` (PR #32) |
+| Deal record (Atlas `deals`) | Tylin | Stephen (board, seller view, trust) | `{_id: dealId, listing, amountUsd, status, card, agent, authId (server only, never public), createdAt, updatedAt, events[], verdict?, passportPath?, sweepAttemptAt?}` |
+| `docs/FACTS.json` | Stephen | everyone | measured numbers; README, /judge and Devpost read from it |
 
 **Contract changes require telling the other person before committing.** Mark such commits with
 `⚠️ CONTRACT`.
@@ -265,4 +280,4 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 5. Secrets never in git: `.env.local` only, plus Vercel and GitHub secrets.
 6. Every number in the README, `/judge`, the video or Devpost comes from `docs/FACTS.json`.
 
-_Last updated: 2026-09-26 13:35 ET by Stephen (Claude)._
+_Last updated: 2026-09-26 15:40 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
