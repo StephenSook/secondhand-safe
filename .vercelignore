@@ -12,7 +12,8 @@ data/__pycache__
 docs/*
 !docs/FACTS.json
 tests
-scripts
+scripts/*
+!scripts/copy-maplibre.mjs
 test-results
 playwright-report
 *.log
