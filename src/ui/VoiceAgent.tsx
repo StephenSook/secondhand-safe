@@ -34,8 +34,6 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
   const [problem, setProblem] = useState("");
   const [agentLine, setAgentLine] = useState("");
   const [userLine, setUserLine] = useState("");
-  const phaseRef = useRef<Phase>("idle");
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   const convo = useConversation({
     onConnect: () => setPhase("live"),
@@ -65,14 +63,21 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
   // leaving the page ends the call (the provider also ends it when it unmounts)
   useEffect(() => () => endSession(), [endSession]);
 
+  // Every start gets a token; End (or a newer start) invalidates it, so a permission prompt or a session fetch that
+  // resolves after the parent pressed End can never open a live microphone.
+  const attempt = useRef(0);
+
   async function start() {
+    const mine = ++attempt.current;
     setProblem(""); setAgentLine(""); setUserLine("");
     setPhase("mic");
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error("no mic"), { name: "NotSupportedError" });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop()); // permission only; the SDK opens its own stream
+      if (attempt.current !== mine) return; // ended while the permission prompt was up
     } catch (e) {
+      if (attempt.current !== mine) return;
       const name = (e as Error).name;
       setProblem(name === "NotAllowedError" || name === "SecurityError"
         ? "Microphone access was blocked. Allow the microphone for this site in the browser's address bar, then try again."
@@ -84,16 +89,18 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
     try {
       const r = await fetch("/api/voice-agent/session", { cache: "no-store" });
       const j = (await r.json().catch(() => ({}))) as { signedUrl?: string; error?: string };
+      if (attempt.current !== mine) return; // the parent pressed End while we were waiting
       if (!r.ok || !j.signedUrl) throw new Error(j.error ?? `HTTP ${r.status}`);
-      if (phaseRef.current !== "starting") return; // the parent pressed End while we were waiting
       convo.startSession({ signedUrl: j.signedUrl, connectionType: "websocket" });
     } catch (e) {
+      if (attempt.current !== mine) return;
       setProblem((e as Error).message);
       setPhase("error");
     }
   }
 
   function stop() {
+    attempt.current++;
     endSession();
     setPhase("ended");
   }

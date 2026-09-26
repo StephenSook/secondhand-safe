@@ -15,11 +15,13 @@ export async function POST(request: Request) {
   if (!expected) {
     return Response.json({ error: "The voice agent's search tool is not configured on this deployment." }, { status: 503, headers: NO_STORE });
   }
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (!underLimit(`voice-search:${ip}`, 60)) return Response.json({ error: "Too many searches; wait a minute." }, { status: 429, headers: NO_STORE });
   if (!secretMatches(request.headers.get("x-lullabuy-agent"), expected)) {
     return Response.json({ error: "Unauthorized." }, { status: 401, headers: NO_STORE });
   }
+  // Every conversation's tool calls arrive from ElevenLabs' few server IPs, so the limit is generous and applies
+  // only after the secret matched (an unauthenticated caller cannot use up the agent's budget).
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  if (!underLimit(`voice-search:${ip}`, 240)) return Response.json({ error: "Too many searches; wait a minute." }, { status: 429, headers: NO_STORE });
   const b = (await request.json().catch(() => null)) as { q?: unknown } | null;
   const q = typeof b?.q === "string" ? b.q.trim().slice(0, 400) : "";
   if (q.length < 2) return Response.json({ error: "Ask the parent what they are looking for." }, { status: 400, headers: NO_STORE });

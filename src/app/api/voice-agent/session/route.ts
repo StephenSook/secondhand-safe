@@ -1,14 +1,35 @@
 import { requireEnv, MissingEnvError } from "@/server/env";
-import { mintSignedUrl } from "@/server/voice/agent";
+import { mintSignedUrl, sameSiteRequest } from "@/server/voice/agent";
+import { getDb } from "@/server/db/mongo";
 import { underLimit } from "@/server/visa/microform";
 
 const NO_STORE = { "cache-control": "no-store" };
+/** Voice sessions per UTC day across every instance (each call is also capped at 180 s by the agent config). */
+const DAILY_CAP = Number(process.env.VOICE_DAILY_CAP ?? "60");
+
+/** Counts today's sessions in Atlas. true = under the cap; null = Atlas unavailable (the per-IP limit still holds). */
+async function underDailyCap(): Promise<boolean | null> {
+  const db = await getDb().catch(() => null);
+  if (!db) return null;
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const doc = await db.collection<{ _id: string; n: number }>("counters").findOneAndUpdate(
+      { _id: `voice-sessions:${day}` }, { $inc: { n: 1 } }, { upsert: true, returnDocument: "after", maxTimeMS: 3_000 });
+    return (doc?.n ?? 0) <= DAILY_CAP;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * GET -> { signedUrl } for the Lullabuy ElevenLabs agent (PLAN 5.6). The API key stays on the server; the browser
- * opens the conversation with a signed URL that expires in about 15 minutes.
+ * opens the conversation with a signed URL that expires in about 15 minutes. Only our own pages may ask, each IP
+ * gets 10 a minute, and the whole site gets DAILY_CAP a day, so nobody can quietly drain the plan's minutes.
  */
 export async function GET(request: Request) {
+  if (!sameSiteRequest(request)) {
+    return Response.json({ error: "Voice sessions start from the Lullabuy shop page." }, { status: 403, headers: NO_STORE });
+  }
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   if (!underLimit(`voice-session:${ip}`, 10)) {
     return Response.json({ error: "Too many voice sessions; wait a minute." }, { status: 429, headers: NO_STORE });
@@ -21,6 +42,9 @@ export async function GET(request: Request) {
       return Response.json({ error: "The voice agent is not configured on this deployment." }, { status: 503, headers: NO_STORE });
     }
     throw e;
+  }
+  if ((await underDailyCap()) === false) {
+    return Response.json({ error: "The voice agent has used today's minutes. Type your request instead." }, { status: 429, headers: NO_STORE });
   }
   try {
     const signedUrl = await mintSignedUrl(env.ELEVENLABS_AGENT_ID, env.ELEVENLABS_API_KEY);

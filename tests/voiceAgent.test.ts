@@ -6,7 +6,7 @@ import { secretMatches, speakable } from "@/server/voice/agent";
 import { screenAll, keywordIntent } from "@/server/shop/agent";
 
 const SECRET = "test-tool-secret-0123456789abcdef";
-const KEYS = ["ELEVENLABS_TOOL_SECRET", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID", "GEMINI_API_KEY"] as const;
+const KEYS = ["ELEVENLABS_TOOL_SECRET", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID", "GEMINI_API_KEY", "MONGODB_URI"] as const;
 const saved: Record<string, string | undefined> = {};
 
 const post = (body: unknown, headers: Record<string, string> = {}) =>
@@ -69,6 +69,11 @@ describe("voice agent helpers", () => {
     expect(secretMatches(SECRET.slice(0, -1), SECRET)).toBe(false);
     expect(secretMatches(SECRET, "")).toBe(false);
   });
+  it("speakable never echoes the word safe back from the parent's own request", () => {
+    const intent = keywordIntent("safe crib");
+    const r = { engine: "keywords" as const, reply: "", intent, ...screenAll(intent) };
+    expect(JSON.stringify(speakable("a safe crib for my son", r))).not.toMatch(/\bsafe\b/i);
+  });
   it("speakable strips the word safe even from the law's name and keeps red listings refused", () => {
     const intent = keywordIntent("crib bumper");
     const r = { engine: "keywords" as const, reply: "", intent, ...screenAll(intent) };
@@ -80,7 +85,19 @@ describe("voice agent helpers", () => {
 });
 
 describe("voice agent session (/api/voice-agent/session)", () => {
-  const get = () => session(new Request("http://x/api/voice-agent/session", { headers: { "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250)}` } }));
+  const get = (headers: Record<string, string> = { "sec-fetch-site": "same-origin" }) =>
+    session(new Request("http://x/api/voice-agent/session", { headers: { "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250)}`, ...headers } }));
+
+  it("refuses requests that do not come from our own pages (403) before anything else", async () => {
+    process.env.ELEVENLABS_API_KEY = "k";
+    process.env.ELEVENLABS_AGENT_ID = "agent_123";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await get({})).status).toBe(403);
+    expect((await get({ "sec-fetch-site": "cross-site" })).status).toBe(403);
+    expect((await get({ origin: "https://evil.example" })).status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
   it("is 503 without the agent id or key", async () => {
     const r = await get();
@@ -136,6 +153,8 @@ describe("scripts/elevenlabs-agent.mjs --dry-run", () => {
     expect(agent.name).toBe("Lullabuy shopping agent");
     expect(agent.conversation_config.tts.voice_id).toBe("EXAVITQu4vr4xnSDxMaL");
     expect(agent.platform_settings.auth.allowlist.map((a: { hostname: string }) => a.hostname))
-      .toEqual(["lullabuy.tech", "www.lullabuy.tech", "secondhand-safe-web.vercel.app", "localhost"]);
+      .toEqual(["lullabuy.tech", "www.lullabuy.tech", "secondhand-safe-web.vercel.app"]); // no localhost in production
+    // a conversation ends itself, so an abandoned tab or a script cannot drain the plan's minutes
+    expect(agent.conversation_config.conversation.max_duration_seconds).toBe(180);
   });
 });

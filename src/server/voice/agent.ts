@@ -19,6 +19,23 @@ export async function mintSignedUrl(agentId: string, key: string, fetchImpl: typ
   return j.signed_url;
 }
 
+/**
+ * True when the request comes from one of our own pages: the browser's Sec-Fetch-Site says same-origin, or (older
+ * browsers) the Origin/Referer host equals the host being asked. A script can forge these headers, so this is a
+ * speed bump in front of the per-IP and daily caps, not a security boundary.
+ */
+export function sameSiteRequest(req: Request): boolean {
+  const site = req.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin";
+  const src = req.headers.get("origin") ?? req.headers.get("referer");
+  if (!src) return false;
+  try {
+    return new URL(src).host === new URL(req.url).host;
+  } catch {
+    return false;
+  }
+}
+
 /** Constant-time compare of the webhook secret header. Hashing first keeps the compare length-independent. */
 export function secretMatches(given: string | null, expected: string): boolean {
   if (!given || !expected) return false;
@@ -83,7 +100,7 @@ export function speakable(query: string, r: ShopResult): SpokenResult {
     return item;
   });
   return {
-    query,
+    query: unsafeWordFree(query),
     engine: r.engine,
     found: r.results.length,
     counts: { refused: r.counts.red, needCheck: r.counts.amber, photoCheckPassed: r.counts.clear },
