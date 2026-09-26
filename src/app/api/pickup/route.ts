@@ -54,9 +54,12 @@ export async function POST(request: Request) {
     verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
     passportPath: passport && "path" in passport ? passport.path : null,
     label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } });
-  // Visa Direct seller payout (PLAN 3.17), only after a confirmed capture, in the background: it never delays or
+  // Visa Direct seller payout (PLAN 3.17), only after Visa Acceptance accepts the capture, in the background: it never delays or
   // changes this response. It runs after the settlement write so the timeline reads CAPTURED, then the payout.
-  waitUntil(out.status === "CAPTURED" ? recorded.then(() => payoutAfterCapture({ dealId: deal.dealId, amountUsd: deal.amountUsd })) : recorded);
+  // Only when the CAPTURED write succeeded, so a payout can never exist on a deal the store does not show as captured.
+  waitUntil(out.status === "CAPTURED"
+    ? recorded.then((ok) => (ok === true ? payoutAfterCapture({ dealId: deal.dealId, amountUsd: deal.amountUsd }) : null))
+    : recorded);
   return Response.json({
     dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
     visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },

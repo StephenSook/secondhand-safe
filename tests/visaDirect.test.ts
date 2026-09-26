@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { generateKeyPairSync } from "node:crypto";
 
 /** In-memory stand-in for the two Atlas collections the payout touches, with Mongo's _id uniqueness. */
 const db = vi.hoisted(() => {
@@ -30,7 +31,7 @@ const db = vi.hoisted(() => {
 vi.mock("@/server/db/mongo", () => ({ getDb: async () => (db.on ? db.db : null) }));
 
 import {
-  buildPushPayload, centsToAmount, classify, httpsTransport, mongoPayoutStore, pushFunds, toCents, traceNumbers, validPan, visaDirectCreds,
+  buildPushPayload, centsToAmount, classify, httpsTransport, mleDecrypt, mleEncrypt, mongoPayoutStore, pushFunds, toCents, traceNumbers, validPan, visaDirectCreds,
   TransportError, VISA_DIRECT_ENV, type PayoutDoc, type PayoutStore, type Transport,
 } from "@/server/visa/direct";
 import { integrationStatus } from "@/server/env";
@@ -45,10 +46,16 @@ function fakePan(): string {
   throw new Error("unreachable");
 }
 const fakePem = (label: string) => ["-----BEGIN", `${label}-----`].join(" ") + "\n" + "QUJD".repeat(8) + "\n" + ["-----END", `${label}-----`].join(" ");
+/** Stands in for Visa's MLE server key pair and ours, generated at run time. */
+const rsa = () => generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
+const mleServer = rsa(), mleClient = rsa();
 const fakeEnv = () => ({
   VISA_DIRECT_USER_ID: "test-user", VISA_DIRECT_PASSWORD: "test-pass",
   VISA_DIRECT_CERT: fakePem("CERTIFICATE"), VISA_DIRECT_KEY: fakePem("PRIVATE KEY"), VISA_DIRECT_CA: fakePem("CERTIFICATE"),
+  VISA_DIRECT_MLE_KEY_ID: "kid-test", VISA_DIRECT_MLE_SERVER_CERT: mleServer.publicKey, VISA_DIRECT_MLE_PRIVATE_KEY: mleClient.privateKey,
 });
+/** What Visa would read after decrypting our request. */
+const sentPayload = (body: string) => JSON.parse(mleDecrypt(JSON.parse(body).encData, mleServer.privateKey));
 
 function memoryStore(): PayoutStore & { docs: Map<string, PayoutDoc> } {
   const docs = new Map<string, PayoutDoc>();
@@ -61,6 +68,7 @@ function memoryStore(): PayoutStore & { docs: Map<string, PayoutDoc> } {
       return { state: "claimed" };
     },
     async finish(id, f) { const d = docs.get(id); if (!d || d.state !== "CLAIMED") return false; Object.assign(d, f); return true; },
+    async release(id) { const d = docs.get(id); if (!d || d.state !== "CLAIMED") return false; docs.delete(id); return true; },
   };
 }
 const approved = (): Transport => vi.fn(async () => ({ httpStatus: 200, text: JSON.stringify({ actionCode: "00", transactionIdentifier: 381228649430015, approvalCode: "20304B" }) }));
@@ -141,6 +149,10 @@ describe("pushFunds", () => {
     expect(t).not.toHaveBeenCalled();
     expect(store.docs.size).toBe(0);
     expect(integrationStatus(fakeEnv()).visaDirect).toBe(true);
+    // two-way TLS alone is enough for helloworld, not for a payout (the push endpoint enforces MLE)
+    const tlsOnly = { ...fakeEnv(), VISA_DIRECT_MLE_KEY_ID: "", VISA_DIRECT_MLE_SERVER_CERT: "", VISA_DIRECT_MLE_PRIVATE_KEY: "" };
+    expect(visaDirectCreds(tlsOnly, "optional").mle).toBeNull();
+    expect(integrationStatus(tlsOnly).visaDirect).toBe(false);
     expect(JSON.stringify(integrationStatus(fakeEnv()))).not.toContain("test-pass");
   });
 
@@ -151,7 +163,8 @@ describe("pushFunds", () => {
     expect(r).toMatchObject({ status: "SENT", actionCode: "00", transactionIdentifier: "381228649430015", httpStatus: 200 });
     const req = (t as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(req.path).toBe("/visadirect/fundstransfer/v1/pushfundstransactions");
-    expect(JSON.parse(req.body).amount).toBe("36.50");
+    expect(sentPayload(req.body).amount).toBe("36.50");
+    expect(req.headers.keyId).toBe("kid-test");
     expect(req.headers["x-client-transaction-id"]).toBe("lullabuy-payout-shs-1");
     expect(req.headers.authorization).toBe(`Basic ${Buffer.from("test-user:test-pass").toString("base64")}`);
     expect(store.docs.get("shs-1")?.state).toBe("SENT");
@@ -202,10 +215,22 @@ describe("pushFunds", () => {
     expect(t).not.toHaveBeenCalled();
   });
 
-  it("a failure before the TLS handshake is FAILED (Visa never received it)", async () => {
-    const t = vi.fn<Transport>(async () => { throw new TransportError("certificate rejected", false); });
-    const r = await pushFunds({ dealId: "shs-tls", amountUsd: 3 }, { env: fakeEnv(), store: memoryStore(), transport: t });
+  it("a failure before the TLS handshake is FAILED, releases the claim, and a later attempt sends once", async () => {
+    const store = memoryStore();
+    const t = vi.fn<Transport>(async () => { throw new TransportError("getaddrinfo ENOTFOUND", false); });
+    const r = await pushFunds({ dealId: "shs-tls", amountUsd: 3 }, { env: fakeEnv(), store, transport: t });
     expect(r.status).toBe("FAILED");
+    expect(store.docs.has("shs-tls")).toBe(false);
+    const ok = approved();
+    expect((await pushFunds({ dealId: "shs-tls", amountUsd: 3 }, { env: fakeEnv(), store, transport: ok })).status).toBe("SENT");
+    expect((await pushFunds({ dealId: "shs-tls", amountUsd: 3 }, { env: fakeEnv(), store, transport: ok })).duplicate).toBe(true);
+    expect(ok).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks Visa to answer 202 before our own timeout", async () => {
+    const t = approved();
+    await pushFunds({ dealId: "shs-hdr", amountUsd: 3 }, { env: fakeEnv(), store: memoryStore(), transport: t });
+    expect(Number((t as ReturnType<typeof vi.fn>).mock.calls[0][0].headers["x-transaction-timeout-ms"])).toBeLessThan(15_000);
   });
 
   it("an invalid amount or card is FAILED before anything is claimed", async () => {
@@ -216,10 +241,51 @@ describe("pushFunds", () => {
   });
 });
 
+describe("Message Level Encryption", () => {
+  const pair = () => generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
+  it("JWE round trip with Visa's header fields", () => {
+    const k = pair();
+    const jwe = mleEncrypt('{"amount":"12.34"}', { keyId: "kid-1", serverCert: k.publicKey }, 1_700_000_000_000);
+    const parts = jwe.split(".");
+    expect(parts).toHaveLength(5);
+    expect(JSON.parse(Buffer.from(parts[0], "base64url").toString())).toEqual({ alg: "RSA-OAEP-256", enc: "A128GCM", iat: 1_700_000_000_000, kid: "kid-1" });
+    expect(mleDecrypt(jwe, k.privateKey)).toBe('{"amount":"12.34"}');
+    const tampered = [parts[0], parts[1], parts[2], parts[3].slice(0, -2) + (parts[3].endsWith("A") ? "BB" : "AA"), parts[4]].join(".");
+    expect(() => mleDecrypt(tampered, k.privateKey)).toThrow();
+  });
+  it("pushFunds encrypts the body, sends keyId, and decrypts Visa's reply", async () => {
+    const server = pair(), client = pair();
+    const env = { ...fakeEnv(), VISA_DIRECT_MLE_KEY_ID: "kid-2", VISA_DIRECT_MLE_SERVER_CERT: server.publicKey, VISA_DIRECT_MLE_PRIVATE_KEY: client.privateKey };
+    const pan = fakePan();
+    const t = vi.fn<Transport>(async (r) => {
+      const sent = JSON.parse(r.body!);
+      expect(Object.keys(sent)).toEqual(["encData"]);
+      expect(r.body).not.toContain(pan);
+      expect(JSON.parse(mleDecrypt(sent.encData, server.privateKey)).recipientPrimaryAccountNumber).toBe(pan);
+      const reply = mleEncrypt(JSON.stringify({ actionCode: "00", transactionIdentifier: 42 }), { keyId: "kid-2", serverCert: client.publicKey });
+      return { httpStatus: 200, text: JSON.stringify({ encData: reply }) };
+    });
+    const r = await pushFunds({ dealId: "shs-mle", amountUsd: 5, recipientPan: pan }, { env, store: memoryStore(), transport: t });
+    expect(t.mock.calls[0][0].headers.keyId).toBe("kid-2");
+    expect(r).toMatchObject({ status: "SENT", transactionIdentifier: "42" });
+  });
+  it("a bad MLE certificate is FAILED and nothing reaches the transport", async () => {
+    const t = approved();
+    const store = memoryStore();
+    const r = await pushFunds({ dealId: "shs-badmle", amountUsd: 5 }, { env: { ...fakeEnv(), VISA_DIRECT_MLE_SERVER_CERT: fakePem("CERTIFICATE") }, store, transport: t });
+    expect(r.status).toBe("FAILED");
+    expect(t).not.toHaveBeenCalled();
+    expect(store.docs.has("shs-badmle")).toBe(false); // released: nothing was sent
+  });
+  it("names MLE when Visa answers 9125", () => {
+    expect(classify(400, { responseStatus: { code: "9125", message: "Expected input credential was not present" } }).note).toMatch(/Message Level Encryption/);
+  });
+});
+
 describe("two-way TLS transport", () => {
   it("malformed PEM credentials fail before any connection, as not sent", async () => {
     const e = fakeEnv();
-    const t = httpsTransport({ userId: "u", password: "p", cert: e.VISA_DIRECT_CERT, key: e.VISA_DIRECT_KEY, ca: e.VISA_DIRECT_CA, host: "sandbox.api.visa.com", acquiringBin: "408999" });
+    const t = httpsTransport({ userId: "u", password: "p", cert: e.VISA_DIRECT_CERT, key: e.VISA_DIRECT_KEY, ca: e.VISA_DIRECT_CA, host: "sandbox.api.visa.com", acquiringBin: "408999", mle: null });
     const err = await t({ method: "GET", path: "/vdp/helloworld", headers: {} }).then(() => null, (x: unknown) => x);
     expect(err).toBeInstanceOf(TransportError);
     expect((err as TransportError).sent).toBe(false);
@@ -237,7 +303,7 @@ describe("the card number never leaves the module", () => {
       ["shs-p1", approved()],
       ["shs-p2", async () => { throw new TransportError("socket hang up", true); }],
       // a rejection that echoes the card number back must not carry it anywhere
-      ["shs-p3", async (r) => ({ httpStatus: 400, text: JSON.stringify({ responseStatus: { code: "3001", message: `Invalid PAN ${JSON.parse(r.body!).recipientPrimaryAccountNumber}` } }) })],
+      ["shs-p3", async (r) => ({ httpStatus: 400, text: JSON.stringify({ responseStatus: { code: "3001", message: `Invalid PAN ${sentPayload(r.body!).recipientPrimaryAccountNumber}` } }) })],
     ];
     const pan = fakePan();
     const records: unknown[] = [];

@@ -15,8 +15,10 @@ export const INTEGRATIONS = {
   elevenlabs: ["ELEVENLABS_API_KEY"],
   tap: ["TAP_AGENT_PRIVATE_KEY_HEX", "TAP_AGENT_KEY_ID"],
   solana: ["SOLANA_SECRET_KEY_B58"],
-  // Visa Direct push payout (PLAN 3.17): VDP two-way TLS (PEM text) plus the project user id and password
-  visaDirect: ["VISA_DIRECT_USER_ID", "VISA_DIRECT_PASSWORD", "VISA_DIRECT_CERT", "VISA_DIRECT_KEY", "VISA_DIRECT_CA"],
+  // Visa Direct push payout (PLAN 3.17): VDP two-way TLS (PEM text) plus the project user id and password, and
+  // Message Level Encryption, which our project's push endpoint enforces (measured: 400 / 9125 without it)
+  visaDirect: ["VISA_DIRECT_USER_ID", "VISA_DIRECT_PASSWORD", "VISA_DIRECT_CERT", "VISA_DIRECT_KEY", "VISA_DIRECT_CA",
+    "VISA_DIRECT_MLE_KEY_ID", "VISA_DIRECT_MLE_SERVER_CERT", "VISA_DIRECT_MLE_PRIVATE_KEY"],
 } as const;
 
 export type Integration = keyof typeof INTEGRATIONS;
@@ -54,6 +56,11 @@ const schema = z.object({
   VISA_DIRECT_CA: z.string().optional(),
   VISA_DIRECT_HOST: z.string().default("sandbox.api.visa.com"),
   VISA_DIRECT_ACQUIRING_BIN: z.string().optional(),
+  // Visa Direct Message Level Encryption (VDP project > Message Level Encryption): Key-ID, Visa's server encryption
+  // certificate and our MLE private key, all three or none
+  VISA_DIRECT_MLE_KEY_ID: z.string().optional(),
+  VISA_DIRECT_MLE_SERVER_CERT: z.string().optional(),
+  VISA_DIRECT_MLE_PRIVATE_KEY: z.string().optional(),
   PUBLIC_BASE_URL: z.url(),
 });
 
