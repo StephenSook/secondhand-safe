@@ -217,6 +217,8 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
               const l = r.listing;
               const price = l.priceUsd ?? 0;
               const canBuy = r.screen.tone !== "red" && price >= 1 && price <= AGENT_MAX;
+              // one open hold at a time: a second hold would hide the first while it is still authorized at Visa
+              const otherHold = !!held && held.id !== l.id;
               return (
                 <li key={l.id} id={`listing-${l.id}`} data-tone={r.screen.tone} data-proposed={proposed === l.id || undefined}
                   className={`rounded-[1.75rem] border-[3px] border-ink ${t.bg} p-4 grid grid-cols-[6.5rem_1fr] gap-4 scroll-mt-28 ${proposed === l.id ? "ring-[6px] ring-visa ring-offset-2" : ""}`}>
@@ -240,7 +242,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
                   )}
                   <p className="col-span-2 text-sm font-semibold">{r.screen.reason}</p>
                   <div className="col-span-2 flex flex-wrap items-center gap-3">
-                    {canBuy ? (
+                    {held?.id === l.id ? null : otherHold && canBuy ? (
+                      <span className="text-sm font-extrabold">One hold at a time: finish the pickup for your current hold first.</span>
+                    ) : canBuy ? (
                       <button type="button" onClick={() => void buy(r)} disabled={!!buying}
                         className="rounded-full border-[3px] border-ink bg-visa text-paper px-4 py-2 font-extrabold disabled:opacity-50">
                         {buying === l.id ? "Signing and holding…" : `Buy with our agent: hold $${price.toFixed(2)}`}
