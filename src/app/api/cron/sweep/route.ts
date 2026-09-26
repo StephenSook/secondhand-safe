@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { visaCreds } from "@/server/visa/creds";
-import { heldBefore, recordSweep } from "@/server/deals/store";
+import { heldBefore, recordSweep, recordSweepAttempt } from "@/server/deals/store";
 import { HOLD_WINDOW_HOURS, planSweep, runSweep } from "@/server/deals/sweep";
 
 export const maxDuration = 60;
@@ -30,11 +30,14 @@ export async function GET(request: Request) {
   const cutoff = new Date(now.getTime() - HOLD_WINDOW_HOURS * 3_600_000).toISOString();
   const held = await heldBefore(cutoff);
   if (!held) return Response.json({ error: "MongoDB Atlas did not answer; nothing was released." }, { status: 503, headers: NO_STORE });
-  const outcomes = await runSweep(creds, planSweep(held, now));
-  const recorded = [];
-  for (const o of outcomes) {
-    // UNKNOWN leaves the deal HELD (retried next run); everything else is written only if still HELD
-    recorded.push({ ...o, recorded: o.status === "UNKNOWN" ? false : !!(await recordSweep(o.dealId, o.status, o.note)) });
-  }
+  const recorded: { dealId: string; status: string; recorded: boolean }[] = [];
+  // each outcome is written right after its Visa call; no new reversal starts after 40 s (maxDuration is 60 s)
+  await runSweep(creds, planSweep(held, now), {
+    deadline: Date.now() + 40_000,
+    record: async (o) => {
+      const ok = o.status === "UNKNOWN" ? !!(await recordSweepAttempt(o.dealId)) : !!(await recordSweep(o.dealId, o.status, o.note));
+      recorded.push({ dealId: o.dealId, status: o.status, recorded: ok });
+    },
+  });
   return Response.json({ windowHours: HOLD_WINDOW_HOURS, examined: held.length, outcomes: recorded }, { headers: NO_STORE });
 }

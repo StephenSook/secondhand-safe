@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { planSweep, sweepOutcome, runSweep, type HeldDeal } from "@/server/deals/sweep";
+import { planSweep, sweepOutcome, runSweep, HOLD_WINDOW_HOURS, type HeldDeal } from "@/server/deals/sweep";
+import { TTL_MS } from "@/server/deals/token";
 import { GET } from "@/app/api/cron/sweep/route";
 import type { VisaResult } from "@/server/visa/acceptance";
 import { pub } from "@/server/deals/store";
@@ -31,12 +32,28 @@ describe("hold sweeper plan", () => {
 
   it("reverses the full held amount at Visa and never calls Visa for a lapsed legacy hold", async () => {
     const f = vi.fn(async () => Response.json({ id: "rev1", status: "REVERSED" }, { status: 201 }));
-    const out = await runSweep(creds, [{ action: "reverse", dealId: "old", amountUsd: 64, authId: "a2" }, { action: "lapse", dealId: "legacy", amountUsd: 64 }], f as unknown as typeof fetch);
+    const recorded: string[] = [];
+    const out = await runSweep(creds, [{ action: "reverse", dealId: "old", amountUsd: 64, authId: "a2" }, { action: "lapse", dealId: "legacy", amountUsd: 64 }],
+      { f: f as unknown as typeof fetch, record: async (o) => { recorded.push(`${o.dealId}:${o.status}:${f.mock.calls.length}`); } });
+    // each outcome is recorded right after its own Visa call (a timeout can never strand an unrecorded reversal)
+    expect(recorded).toEqual(["old:RELEASED:1", "legacy:LAPSED:1"]);
     expect(f).toHaveBeenCalledTimes(1);
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("/pts/v2/payments/a2/reversals");
     expect(JSON.parse(String(init.body)).reversalInformation.amountDetails.totalAmount).toBe("64.00");
     expect(out.map((o) => o.status)).toEqual(["RELEASED", "LAPSED"]);
+  });
+});
+
+describe("hold sweeper limits", () => {
+  it("never sweeps a hold the buyer can still settle: the window is at least the pickup token's life", () => {
+    expect(HOLD_WINDOW_HOURS * 3_600_000).toBeGreaterThan(TTL_MS);
+  });
+  it("starts no new reversal after the deadline", async () => {
+    const f = vi.fn(async () => Response.json({ id: "r", status: "REVERSED" }, { status: 201 }));
+    const out = await runSweep(creds, [{ action: "reverse", dealId: "a", amountUsd: 1, authId: "x" }], { f: f as unknown as typeof fetch, deadline: Date.now() - 1 });
+    expect(out).toEqual([]);
+    expect(f).not.toHaveBeenCalled();
   });
 });
 
