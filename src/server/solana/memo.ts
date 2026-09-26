@@ -82,7 +82,7 @@ export async function anchor(secretB58: string, memo: string, f: typeof fetch = 
 /** The public key that signs our passports: from the keypair when this server holds it, else SOLANA_PUBKEY. */
 export function passportSigner(env: Record<string, string | undefined> = process.env): string | null {
   const sec = env.SOLANA_SECRET_KEY_B58?.trim();
-  if (sec) { try { return b58encode(keypairFromB58(sec).pub); } catch { /* fall through */ } }
+  if (sec) { try { return b58encode(keypairFromB58(sec).pub); } catch (e) { console.warn("[passport] SOLANA_SECRET_KEY_B58 is malformed:", (e as Error).message); } }
   return env.SOLANA_PUBKEY?.trim() || null;
 }
 

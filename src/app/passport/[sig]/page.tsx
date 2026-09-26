@@ -17,11 +17,14 @@ export default async function PassportPage({ params, searchParams }: { params: P
   }
   let record: Record<string, unknown> | null = null;
   let json = "";
-  try { if (r) { json = Buffer.from(r, "base64url").toString("utf8"); record = JSON.parse(json); } } catch { record = null; json = ""; }
+  let recordBroken = false;
+  try { if (r) { json = Buffer.from(r, "base64url").toString("utf8"); record = JSON.parse(json); } } catch { record = null; json = ""; recordBroken = true; }
   const signer = passportSigner();
   const j = tx ? judgePassport(tx, signer, json || null) : null;
   const matches = !!j?.verified;
   const headline = !j ? "" : j.verified ? "✓ Verified: our signer, a successful transaction, and the record's hash"
+    : !signer ? "Cannot verify: this server has no passport key configured"
+    : recordBroken ? "✕ The record in this link is damaged and cannot be read"
     : !j.fromUs ? "✕ Not signed by Lullabuy's passport key"
     : !j.succeeded ? "✕ That transaction failed on chain"
     : record ? "✕ Record does NOT match the chain" : "Signed by us; no record attached to this link";
