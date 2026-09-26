@@ -82,7 +82,7 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 0.2 | Next.js scaffold in place (TS, App Router, `src/`), deps from IMPLEMENTATION Task 1 | `src/**`, `package.json` | **Stephen** | ✅ | 0.1 | Next.js 16.3, Tailwind v4, src/. PR #2. | |
 | 0.3 | Env contract `src/server/env.ts` + test | `src/server/env.ts`, `tests/env.test.ts` | **Stephen** | ✅ | 0.2 | src/server/env.ts: parseEnv names every missing key; requireEnv per feature; integrationStatus booleans only. | |
 | 0.4 | CI: lint, typecheck, vitest, pytest, build, gitleaks, em-dash gate | `.github/workflows/ci.yml` | **Stephen** | ✅ | 0.2 | CI: web, ml, e2e (parity + Playwright), hygiene (em dash + gitleaks). Bare gates. Probe workflow (PR #6). | |
-| 0.5 | Accounts + keys (each person signs up themselves, keys move by AirDrop only) | local `.env.local` | **Tylin**: Visa Acceptance sandbox, Visa Developer project (Visa Direct + Payment Passkey), Atlas M0. **Stephen**: Gemini, ElevenLabs + .Tech (MLH email), eBay keyset, Vercel, Solana devnet wallet, Notability QR, HexLabs OpenAI key | 🟡 | n/a | DONE: Vercel prod has Visa sandbox + TAP + ElevenLabs keys (push-env.sh, pipefail bug fixed); Gemini in prod is KEYLESS (Vercel OIDC -> Workload Identity Federation -> SA with aiplatform.user on Curtail credits). Open: Atlas M0 (account), VDP project (account), faucet SOL (GitHub login). | |
+| 0.5 | Accounts + keys (each person signs up themselves, keys move by AirDrop only) | local `.env.local` | **Tylin**: Visa Acceptance sandbox, Visa Developer project (Visa Direct + Payment Passkey), Atlas M0. **Stephen**: Gemini, ElevenLabs + .Tech (MLH email), eBay keyset, Vercel, Solana devnet wallet, Notability QR, HexLabs OpenAI key | 🟡 | n/a | DONE: Visa sandbox, TAP, ElevenLabs, Atlas M0 'lullabuy', Solana devnet wallet (1 SOL), keyless Gemini (Vercel OIDC -> WIF -> Vertex), .Tech domain lullabuy.tech (auto-renew OFF), Notability Pro (HACKGT, renewal cancelled, ends Oct 26). OPEN, human only: VDP project (H1). |
 | 0.6 | **Gate:** sandbox auth → capture, and auth → reversal, from a live test | `src/server/visa/acceptance.ts`, `tests/visa.live.test.ts` | **Stephen** | ✅ | 0.3, 0.5 | Live: AUTHORIZED -> capture PENDING, AUTHORIZED -> REVERSED (tests/visa.live.test.ts) on Cybersource's PUBLIC sample merchant 'testrest'. Tylin: swap in your own sandbox keys so transactions show in your Business Center. $40.00 is a simulator AVS trigger. | |
 
 ### Phase 1: Core loop (Sat 12 AM to 6 AM)
@@ -92,13 +92,13 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 1.1 | Trusted Agent Protocol sign + verify + tamper tests | `src/server/tap/tap.ts`, `tests/tap.test.ts` | **Stephen** | ✅ | 0.3 | Merged PR #10 + review fixes (signature before nonce, capped nonce, identity+integrity wording, $200 agent cap). Prod needs TAP key pushed. | | | |
 | 1.2 | Recall index: CPSC + NHTSA → Atlas, with a 20-record hand check | `data/build_recall_index.py`, `data/handcheck.md` | **Stephen** | ✅ | 0.5 | 6,036 CPSC recalls -> 1,137 nursery. Gemini 3.5 Flash pass (Vertex, Sat 8 AM): 449 -> 822 with identifiers, values kept only if verbatim in the recall. Short numeric models need the brand. data/handcheck.md. | |
 | 1.3 | Verdict rules + fuzzy matcher (O/0, I/1 folding) | `src/core/verdict.ts`, `src/server/recalls/match.ts` | **Stephen** | ✅ | 1.2 | src/server/recalls/match.ts + tests: folding, batch rule (26-061 recalls BHC001 only in batch 202408), D3 rules, junk-id guard. | |
-| 1.4 | Atlas indexes + change stream → `/api/stream` (SSE) | `src/server/db/mongo.ts`, `src/app/api/stream/route.ts` | **Tylin** | ⬜ | 0.5 | M0 allows 3 search/vector indexes max. |
-| 1.5 | Deal state machine + `/api/checkout` + `/api/pickup` + hold sweeper | `src/server/deals/machine.ts`, `src/app/api/{checkout,pickup,cron}/**` | **Stephen** | 🟡 | 0.6, 1.1, 1.3 | Stateless: the Visa authorization IS the deal; HMAC deal token; 4 adversarial review rounds (replay -> REFUSED, network -> UNKNOWN, allowlist, no concurrent settle). Missing: hold sweeper, Atlas history for the board. | | | |
+| 1.4 | Atlas indexes + change stream → `/api/stream` (SSE) | `src/server/db/mongo.ts`, `src/app/api/stream/route.ts` | **Tylin** | 🟡 | 0.5 | Atlas deals collection live (3.11). Change stream -> SSE is 5.3. |
+| 1.5 | Deal state machine + `/api/checkout` + `/api/pickup` + hold sweeper | `src/server/deals/machine.ts`, `src/app/api/{checkout,pickup,cron}/**` | **Stephen** | 🟡 | 0.6, 1.1, 1.3 | Stateless deal token + 4 review rounds. Hold sweeper is 5.4. |
 | 1.6 | Listing harvest (1,000+ real listings, eBay + Craigslist Atlanta) | `ml/harvest.py` | **Stephen** | ✅ | 0.5 | 1,662 listings (613 Craigslist, 1,049 eBay) + 243 CPSC photos, contact info redacted. Loads into Atlas `listings` once 0.5 exists. Finding: eBay already filters bumpers and Rock 'n Plays. |
 | 1.7 | Classifier dataset + training + eval vs zero-shot | `ml/embed.py`, `ml/train.py`, `ml/eval.py`, `ml/labels.csv` | **Stephen** | ✅ | 1.6 | Head now trained on transformers.js q8 embeddings (the phone runtime). Held-out macro-F1 0.724 [0.60, 0.81] vs 0.558 zero-shot; 2/107 vs 38/107 false alarms. Numbers live in docs/FACTS.json. | |
 | 1.8 | Label reader: Gemini vision JSON + boxes, OpenAI fallback | `src/server/ml/label.ts`, `tests/label.live.test.ts` | **Stephen** | ✅ | 0.5 | Live via Vertex on a real CPSC label photo (KMART 07-1248 -> recall 11020, tests/label.live.test.ts). Prod needs a Gemini key on a funded project (see 0.5). | |
 | 1.9 | Pickup page with live scan overlay + upload fallback | `src/app/pickup/**`, `src/ui/ScanOverlay.tsx` | **Stephen** | ✅ | 1.8 | /pickup: photo, BarcodeDetector UPC, Gemini label, on-device classifier, editable fields, real hold settlement, spoken verdict. | |
-| 1.10 | Deal Board (glass card per deal, live via SSE) | `src/app/board/**`, `src/ui/GlassDealCard.tsx` | **Stephen** | ⬜ | 1.4 | Nova components. HELD amber, CAPTURED green, REVERSED red, a sound per state. |
+| 1.10 | Deal Board (glass card per deal, live via SSE) | `src/app/board/**`, `src/ui/GlassDealCard.tsx` | **Stephen** | ✅ | 1.4 | /board reads Atlas (polling every 3 s). Push via change stream is 5.3. |
 
 **CHECKPOINT Sat 6 AM:** both demo deals work end to end on localhost (Deal 1 REVERSED on the printed
 26-061 label, Deal 2 CAPTURED on the real item). If not, stop and fix together before anything in Phase 2.
@@ -109,28 +109,28 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 |---|---|---|---|---|---|---|
 | 2.1 | Vercel deploy (dedicated project `secondhand-safe-web`) + CI e2e + live probe | `.github/workflows/probe.yml` | **Stephen** | ✅ | 1.5 | https://secondhand-safe-web.vercel.app; vercel.json pins nextjs; probe.yml every 30 min asserts real verdicts. Playwright suite passes against production. | |
 | 2.2 | Public `/api/check`, `/api/stats`, `/api/health` | `src/app/api/{check,stats,health}/**` | **Stephen** | ✅ | 1.3 | /api/check (GET for curl, POST), /api/stats, /api/health, all from artifacts. | |
-| 2.3 | Solana passport (Metaplex Core) + memo anchor | `src/server/solana/passport.ts` | **Tylin** | ⬜ | 1.5 | Devnet. Fund the wallet Friday. |
-| 2.4 | Microform card entry + TMS token | `src/server/visa/acceptance.ts` | **Tylin** | ⬜ | 0.6 | Card number never touches our server. |
-| 2.5 | Visa Direct push funds to seller + Visa Payment Passkey step-up | `src/server/visa/direct.ts` | **Tylin** | ⬜ | 0.5 | VDP sandbox, two-way SSL. |
-| 2.6 | Recall watch (Atlas trigger) + web push | `src/server/watch/**` | **Tylin** | ⬜ | 2.3 | Replay recall 26-568 in the demo, labelled as a replay. |
+| 2.3 | Solana passport (Metaplex Core) + memo anchor | `src/server/solana/passport.ts` | **Tylin** | ✅ | 1.5 | Memo passport live (see 3.12). Metaplex Core asset upgrade is 5.7. |
+| 2.4 | Microform card entry + TMS token | `src/server/visa/acceptance.ts` | **Tylin** | ✅ | 0.6 | Done as 3.9 (Microform) + 3.16 (TMS). |
+| 2.5 | Visa Direct push funds to seller + Visa Payment Passkey step-up | `src/server/visa/direct.ts` | **Tylin** | ⛔ | 0.5 | Same as 3.17: needs the VDP project (H1). |
+| 2.6 | Recall watch (Atlas trigger) + web push | `src/server/watch/**` | **Tylin** | ⬜ | 2.3 | Merged into 5.5 (recall watch + push). |
 | 2.7 | Shop page + Gemini agent (search, prescreen, TAP-signed checkout) | `src/app/(shop)/**`, `src/server/ml/agent.ts` | **Stephen** | ✅ | 1.3, 1.1 | /shop: Gemini 3.5 Flash parses the request (typed or spoken) into filters over 1,662 real scanned listings; every result pre-screened (recall index + photo model + human review); red refused server-side; TAP-signed agent hold hands off to /pickup. Two review rounds fixed. |
 | 2.8 | Classifier runtime in Node (CLIP + trained head, parity test with Python) | `src/server/ml/classify.ts`, `public/models/head.json` | **Stephen** | ✅ | 1.7 | In-browser CLIP q8 + head.json; parity suite in CI: head math = sklearn to 1e-5; cross-platform q8 cosine 0.987 to 0.996, same class. | |
 | 2.9 | Measured scan of all harvested listings + hand review of red flags | `ml/scan.py`, `ml/review.csv`, `docs/FACTS.json` | **Stephen** | ✅ | 1.6, 1.7, 1.3 | 1,662 listings scanned. Round 1: 39 flags, 1 real (reviewed by eye). 23 false alarms -> train-only hard negatives -> round 2: 9 flags. HONEST: X of N is tiny on eBay/Craigslist (matches CR's 7/400, 2/49); lead with CR's 50/65 + the learning loop instead. | |
-| 2.10 | Checkpoint kiosk (barcode + camera) + NFC bridge for the ACR122U | `src/app/checkpoint/**`, `bridge/index.mjs` | **Stephen** | ⬜ | 1.5 | NFC writes `PUBLIC_BASE_URL/passport/<asset>` to the sticker. No wiring or LilyPad (D5). |
-| 2.11 | ElevenLabs spoken verdict (EN + ES) + voice agent | `src/server/voice/elevenlabs.ts` | **Stephen** | 🟡 | 1.5 | /api/voice fixed lines EN + ES (voice Sarah, eleven_flash_v2_5), live test passes. Production needs ELEVENLABS_API_KEY pushed. | |
-| 2.12 | Visa workshop, Klaus 1443 (Sat 10-11 AM). Ask: who judges, VIC creds, the hold mechanic | n/a | **Stephen + Tylin** | ⬜ | n/a | 30 swag points. |
+| 2.10 | Checkpoint kiosk (barcode + camera) + NFC bridge for the ACR122U | `src/app/checkpoint/**`, `bridge/index.mjs` | **Stephen** | ⬜ | 1.5 | Kiosk page is 5.12; NFC needs the reader in hand (H5). |
+| 2.11 | ElevenLabs spoken verdict (EN + ES) + voice agent | `src/server/voice/elevenlabs.ts` | **Stephen** | ✅ | 1.5 | TTS verdict + result summary EN/ES live. Conversational agent is 5.6. |
+| 2.12 | Visa workshop, Klaus 1443 (Sat 10-11 AM). Ask: who judges, VIC creds, the hold mechanic | n/a | **Stephen + Tylin** | ⬜ | n/a | Past (Sat 10-11 AM). Stephen: did anyone attend? Record what Visa said here. |
 
 ### Phase 3: Galaxy tier + hardening (Sat 2 PM to 9 PM)
 
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
-| 3.1 | Expo iOS pickup scanner (on-device OCR) | `mobile/**` | **Stephen** | ⬜ | 1.5 | Runs on Stephen's iPhone. The PWA stays the judge path. |
-| 3.2 | `/map` (deck.gl hex), `/atlas` (embedding-atlas), `/trust` (T&S console), `/judge`, `/passport/[id]` | `src/app/**` | **Stephen** | 🟡 | 2.9 | /judge ✅, /map ✅, /atlas ✅ (t-SNE of 1,834 images). Not built: /trust console, /passport (needs Solana devnet SOL: faucet dry). | | | |
+| 3.1 | Expo iOS pickup scanner (on-device OCR) | `mobile/**` | **Stephen** | ✅ | 1.5 | Duplicate of 3.14. |
+| 3.2 | `/map` (deck.gl hex), `/atlas` (embedding-atlas), `/trust` (T&S console), `/judge`, `/passport/[id]` | `src/app/**` | **Stephen** | 🟡 | 2.9 | /judge, /map, /atlas, /passport done. /trust console is 5.8. |
 | 3.3 | MCP server `recall_check` for AI shopping agents (HTTP) | `src/app/api/mcp/route.ts` | **Stephen** (took over) | ✅ | 2.2 | /api/mcp, stateless Streamable HTTP, read-only recall_check; curl + config in README; tests/mcp.test.ts. |
 | 3.4 | FACTS test: README, `/judge`, submission numbers equal `docs/FACTS.json` | `tests/facts.test.ts` | **Stephen** | ✅ | 2.9 | tests/facts.test.ts: README numbers == docs/FACTS.json. | |
-| 3.5 | Codex adversarial review of payments + TAP + matcher, repeated until a clean round | n/a | **Tylin** | ⬜ | 1.5 | Before footage. Record rounds in Notes. |
-| 3.6 | Stills of every judge page (desktop + phone) from the deployed origin | `docs/stills/` | **Stephen** | ✅ | 2.1 | Stills of /, /pickup, /judge, /map, /atlas from the deployed origin, desktop + phone: 0 console errors, 0 overflow (Sat 5:55 AM). Re-run after key push. | | | |
-| 3.7 | Tier 3 (only once Phase 1-2 are ✅ on main): Vultr inference, Tiger Data trend, Backboard memory, YOLO label finder, Apple Wallet pass, USDC payout | various | split | ⬜ | Phase 2 | Each gets wired or cut, never claimed half-built. |
+| 3.5 | Codex adversarial review of payments + TAP + matcher, repeated until a clean round | n/a | **Tylin** | 🟡 | 1.5 | Codex out of quota until Sep 30, Gemini + Grok 402. Fresh-context Claude reviewers ran on every money-path diff (Microform, matcher, shop, passport, Atlas, TMS). New diffs: 5.14. |
+| 3.6 | Stills of every judge page (desktop + phone) from the deployed origin | `docs/stills/` | **Stephen** | 🟡 | 2.1 | Re-run after round 3 (5.13). |
+| 3.7 | Tier 3 (only once Phase 1-2 are ✅ on main): Vultr inference, Tiger Data trend, Backboard memory, YOLO label finder, Apple Wallet pass, USDC payout | various | split | ⬜ | Phase 2 | Split into 5.x rows and H2-H4. |
 | 3.8 | Aardvark-style motion system + art (design study docs/design/aardvark-reference.md) | `src/ui/**`, `public/art/**` | **Stephen** | ✅ | n/a | Preloader stroke wipe, elastic words, fanned cards, pinned scroll-scrub scan (generated, captioned), floating gear, parallax footer. |
 | 3.9 | Microform card entry (replaces the server-side sandbox test card) | `src/server/visa/microform.ts`, `/pickup` | **Stephen** (took over) | ✅ | 0.6 | Visa Microform v2 fields, transient token into authorize(); live e2e green; review round 1 fixed (loading guard, card source on the hold, expiry, origin, rate limit). |
 | 3.10 | TAP-signed agent checkout (RFC 9421 ed25519) + tamper demo | `src/server/tap/**` | **Stephen** | ✅ | 1.5 | Same as 1.1. | | | |
@@ -141,16 +141,49 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 3.15 | Seller-side confirmation of the pickup scan (today the buyer's device reports it; review finding) | `/pickup`, `src/app/api/pickup/**` | **Tylin** + **Stephen** | ✅ | 1.5 | Seller live view /deal/<id> via QR on the buyer pickup screen (reads Atlas every 3 s). The buyer device still reports the scan; noted in Q&A. |
 | 3.16 | Visa Token Management Service: save the card as a token at authorization (TOKEN_CREATE) and reuse it | `src/server/visa/**` | **Stephen** | ✅ | 3.9 | Visa TMS saved card (signed wrapper, 7-day life) + Visa card-linked promotions handled (measured live: 20% off, no status field); e2e savedcard.spec on prod. |
 | 3.17 | Visa Direct push payout to the seller after capture | `src/server/visa/**` | **Tylin** | ⛔ | 1.5 | BLOCKED: needs a Visa Developer Platform project + two-way SSL cert (account creation is a human step). |
-| 3.18 | MLH extras: Tiger Data (scan trend hypertable), Backboard (parent memory), Vultr (inference box) | various | split | ⛔ | 3.11 | BLOCKED: each needs an account created by a human; wire or cut, never claim half-built. |
-| 3.19 | YOLO label finder (box the label, then crop for Gemini) | `ml/**` | **Stephen** | ⬜ | 1.8 | Needs ~300 boxed label images; Gemini boxes + human spot check. |
-| 3.20 | Physical Pickup Checkpoint (Circuit Playground ring/buzzer, barcode scanner, NFC sticker) | `hardware/**` | **Stephen** | ⛔ | 1.9 | BLOCKED: needs the parts from the hardware desk in hand. |
-| 3.21 | Recall watch: re-check stored deals when a new recall lands, notify the owner | `src/server/**` | **Stephen** | ⬜ | 3.11 | Atlas now exists; push needs a subscribed device. |
+| 3.18 | MLH extras: Tiger Data (scan trend hypertable), Backboard (parent memory), Vultr (inference box) | various | split | ⛔ | 3.11 | Tiger Data (H2), Backboard (H3), Vultr (H4): accounts are human steps. |
+| 3.19 | YOLO label finder (box the label, then crop for Gemini) | `ml/**` | **Stephen** | ⬜ | 1.8 | Now 5.10. |
+| 3.20 | Physical Pickup Checkpoint (Circuit Playground ring/buzzer, barcode scanner, NFC sticker) | `hardware/**` | **Stephen** | ⛔ | 1.9 | Needs the parts (H5). D5: plug-in only. |
+| 3.21 | Recall watch: re-check stored deals when a new recall lands, notify the owner | `src/server/**` | **Stephen** | ⬜ | 3.11 | Now 5.5. |
+
+### Phase 5: Galaxy round 3 (Sat 1:30 PM onward, built by Claude on Stephen's side)
+
+| # | Component | File(s) | Owner | Status | Deps | Notes |
+|---|---|---|---|---|---|---|
+| 5.1 | Live probe: red since the rebrand (it grepped the old name); now both origins + Atlas deals + MCP | `.github/workflows/probe.yml` | **Stephen** | 🟡 | n/a | PR #24. Production was healthy the whole time. |
+| 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | ⬜ | 3.11 | MongoDB depth + Oracle. A look-alike is a prompt to read the label, never a verdict (D2). |
+| 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ⬜ | 3.11 | Replaces 3 s polling; reconnects with a resume token. |
+| 5.4 | Hold sweeper: Vercel cron reverses holds past their window; the board shows RELEASED | `src/app/api/cron/**`, `vercel.json` | **Stephen** | ⬜ | 1.5 | An abandoned pickup never leaves a parent's money held. |
+| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ⬜ | 3.11, 3.12 | Visa post-purchase stage. iOS push needs the Home Screen app. |
+| 5.6 | ElevenLabs conversational shopping agent (Agents Platform) with a server tool calling `/api/shop`, EN + ES | `src/ui/VoiceAgent.tsx`, `scripts/elevenlabs-agent.mjs` | **Stephen** | ⬜ | 2.7 | ElevenLabs depth: a conversation, not only TTS. |
+| 5.7 | Solana passport as a Metaplex Core asset with Attributes (verdict, index date, record hash), updated on recall | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | The Memo stays as the audit trail. |
+| 5.8 | `/trust` Trust and Safety console: reversals by reason, disputes avoided, flag trend, drawn with Visa Chart Components | `src/app/trust/**` | **Stephen** | ⬜ | 5.3 | The buyer persona (marketplace T&S + payments). Numbers come from Atlas, never typed. |
+| 5.9 | "Without vs With" replay: the same deal on a cash marketplace vs a held Visa payment | `src/app/board/**` | **Stephen** | ⬜ | 5.3 | 15 s between demo beats. |
+| 5.10 | Second trained model: YOLO label finder (box the label, crop, then read); report read rate with and without it | `ml/**` | **Stephen** | ⬜ | 1.8 | Gemini auto-boxes + a human spot check. |
+| 5.11 | Claims audit: every named product grepped in shipped code; `.env.example` parity; gitleaks over full history | `docs/claims-audit.md` | **Stephen** | ⬜ | all | Re-run after each feature. |
+| 5.12 | `/checkpoint` table kiosk: big verdict, keyboard-wedge barcode input, a sound per state; NFC if the reader arrives | `src/app/checkpoint/**` | **Stephen** | ⬜ | 1.9 | Works with no hardware; hardware only adds. |
+| 5.13 | Stills of every judge screen (desktop + phone) from lullabuy.tech, each looked at | `docs/stills/` | **Stephen** | ⬜ | 5.2-5.12 | |
+| 5.14 | Adversarial review of every new diff, repeated until a clean round | n/a | **Stephen** | ⬜ | each | Fresh-context reviewers (other model families are out of quota). |
+| 5.15 | Devpost project drafted through the Devpost connector, NOT submitted | n/a | **Stephen** | ⬜ | 5.11 | Stephen reviews it and presses submit himself. |
+| 5.16 | Demo video (after 5.1-5.14; loudness + duration measured) | `docs/video/` | **Stephen** | ⬜ | 5.13 | Held until the product is complete (Stephen, Sat). |
+
+### Human-only steps (account creation, sign-ins, physical parts: Claude cannot do these)
+
+| # | Step | Who | What it unlocks |
+|---|---|---|---|
+| H1 | Create a free Visa Developer Platform account + a sandbox project with Visa Direct (Push Funds). Claude then does the CSR, the cert and the code | Tylin or Stephen | Seller payout after capture (3.17): the Visa "payments" stage end to end |
+| H2 | Sign up for Tiger Data (Tiger Cloud free trial), AirDrop the connection string | Stephen | Scan-history hypertable + trend on /trust: MLH Tiger Data |
+| H3 | Sign up for Backboard, AirDrop the API key | Stephen | The agent remembers the child's age and past buys: MLH Backboard |
+| H4 | Vultr, only if the MLH credit works without a card on file | Stephen | GPU inference box: MLH Vultr |
+| H5 | Hardware desk: USB barcode scanner, ACR122U NFC reader + stickers | Stephen | Table Checkpoint (5.12, 3.20) |
+| H6 | One real parent's words, with consent | Stephen | Pitch + Devpost |
+| H7 | Inspiration line, then final submit on Devpost AND expo.hexlabs.org | Stephen | Being judged at all |
 
 ### Phase 4: Freeze + submit (Sat 9 PM to Sun 8 AM)
 
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
-| 4.1 | Claims audit: grep the code for every named product; `.env.example` parity; gitleaks full history | `docs/claims-audit.md` | **Tylin** | ⬜ | all | |
+| 4.1 | Claims audit: grep the code for every named product; `.env.example` parity; gitleaks full history | `docs/claims-audit.md` | **Tylin** | ⬜ | all | Now 5.11 (runs again after every feature). |
 | 4.2 | Demo video 2-3 min (loudness + duration measured) | `docs/video/` | **Stephen** | ⬜ | 3.6 | |
 | 4.3 | Devpost writeup (Visa Acceptance + Trusted Agent Protocol named 3+ times, MongoDB Atlas, Solana), Notability note + 2 screenshots, .Tech domain | `docs/submission.md` | **Stephen** | 🟡 | 4.1 | docs/submission-draft.md: numbers from FACTS.json; TODOs for the parts only Stephen/Tylin can write (inspiration, what we learned). | |
 | 4.4 | Submit to **Devpost AND expo.hexlabs.org**, every box checked, reload-verify both | n/a | **Stephen** | ⬜ | 4.3 | By Sun 6:30 AM. |
@@ -232,4 +265,4 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 5. Secrets never in git: `.env.local` only, plus Vercel and GitHub secrets.
 6. Every number in the README, `/judge`, the video or Devpost comes from `docs/FACTS.json`.
 
-_Last updated: 2026-09-26 05:55 ET by Stephen (Claude)._
+_Last updated: 2026-09-26 13:35 ET by Stephen (Claude)._
