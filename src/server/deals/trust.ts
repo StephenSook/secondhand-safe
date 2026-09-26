@@ -19,11 +19,14 @@ export interface TrustStats {
   byCard: Record<string, number>;
   /** deals created per hour, last 24 hours, oldest first */
   hourly: { hour: string; n: number }[];
+  /** Visa Direct seller payouts by outcome (empty until Visa Direct is live on this deployment) */
+  payouts: Record<string, { n: number; usd: number }>;
 }
 
 type Doc = {
   status: string; amountUsd: number; card: string | null; agent: string | null; createdAt: string;
   events?: { at: string; status: string }[]; verdict?: { kind?: string; recall?: string | null };
+  payout?: { status?: string; amountUsd?: number } | null;
 };
 
 export function percentile(sorted: number[], p: number): number | null {
@@ -42,6 +45,7 @@ export function summarize(docs: Doc[], now = new Date()): TrustStats {
   const byCard: Record<string, number> = {};
   let agent = 0;
   const hours = new Map<string, number>();
+  const payouts: TrustStats["payouts"] = {};
   const start = new Date(now.getTime() - 23 * 3_600_000);
   start.setUTCMinutes(0, 0, 0);
   for (let h = 0; h < 24; h++) hours.set(new Date(start.getTime() + h * 3_600_000).toISOString().slice(0, 13), 0);
@@ -50,6 +54,10 @@ export function summarize(docs: Doc[], now = new Date()): TrustStats {
     const s = (byStatus[d.status] ??= { n: 0, usd: 0 });
     s.n++; s.usd = round2(s.usd + (d.amountUsd || 0));
     if (d.agent) agent++;
+    if (d.payout?.status) {
+      const p = (payouts[d.payout.status] ??= { n: 0, usd: 0 });
+      p.n++; p.usd = round2(p.usd + (d.payout.amountUsd || 0));
+    }
     byCard[d.card ?? "unknown"] = (byCard[d.card ?? "unknown"] ?? 0) + 1;
     const hk = (d.createdAt ?? "").slice(0, 13);
     if (hours.has(hk)) hours.set(hk, (hours.get(hk) ?? 0) + 1);
@@ -79,6 +87,7 @@ export function summarize(docs: Doc[], now = new Date()): TrustStats {
     bySource: { agent, person: docs.length - agent },
     byCard,
     hourly: [...hours.entries()].map(([hour, n]) => ({ hour, n })),
+    payouts,
   };
 }
 
@@ -87,7 +96,7 @@ export async function trustStats(): Promise<TrustStats | null> {
   if (!db) return null;
   try {
     const docs = await db.collection<Doc>("deals")
-      .find({}, { projection: { _id: 0, status: 1, amountUsd: 1, card: 1, agent: 1, createdAt: 1, events: 1, verdict: 1 }, sort: { createdAt: -1 }, limit: 2000, maxTimeMS: 5000 })
+      .find({}, { projection: { _id: 0, status: 1, amountUsd: 1, card: 1, agent: 1, createdAt: 1, events: 1, verdict: 1, payout: 1 }, sort: { createdAt: -1 }, limit: 2000, maxTimeMS: 5000 })
       .toArray();
     return summarize(docs);
   } catch (e) {

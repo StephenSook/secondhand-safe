@@ -15,6 +15,8 @@ export const INTEGRATIONS = {
   elevenlabs: ["ELEVENLABS_API_KEY"],
   tap: ["TAP_AGENT_PRIVATE_KEY_HEX", "TAP_AGENT_KEY_ID"],
   solana: ["SOLANA_SECRET_KEY_B58"],
+  // Visa Direct push payout (PLAN 3.17): VDP two-way TLS (PEM text) plus the project user id and password
+  visaDirect: ["VISA_DIRECT_USER_ID", "VISA_DIRECT_PASSWORD", "VISA_DIRECT_CERT", "VISA_DIRECT_KEY", "VISA_DIRECT_CA"],
 } as const;
 
 export type Integration = keyof typeof INTEGRATIONS;
@@ -44,6 +46,14 @@ const schema = z.object({
   TAP_AGENT_KEY_ID: z.string().min(1),
   SOLANA_RPC_URL: z.string().default("https://api.devnet.solana.com"),
   SOLANA_SECRET_KEY_B58: z.string().optional(),
+  // Visa Direct (PLAN 3.17): optional, the payout is NOT_CONFIGURED without all five
+  VISA_DIRECT_USER_ID: z.string().optional(),
+  VISA_DIRECT_PASSWORD: z.string().optional(),
+  VISA_DIRECT_CERT: z.string().optional(),
+  VISA_DIRECT_KEY: z.string().optional(),
+  VISA_DIRECT_CA: z.string().optional(),
+  VISA_DIRECT_HOST: z.string().default("sandbox.api.visa.com"),
+  VISA_DIRECT_ACQUIRING_BIN: z.string().optional(),
   PUBLIC_BASE_URL: z.url(),
 });
 

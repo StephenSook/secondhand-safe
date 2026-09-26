@@ -3,6 +3,7 @@ import { getDb } from "@/server/db/mongo";
 import type { DealStatus } from "./settle";
 import { CATALOG } from "@/server/shop/catalog";
 import { DEMO_TABLE } from "@/core/demoTable";
+import type { PayoutResult, PayoutStatus } from "@/server/visa/direct";
 
 const KNOWN_TITLES = new Set<string>([...DEMO_TABLE.map((d) => d.label), ...CATALOG.map((l) => l.title.slice(0, 80))]);
 /** Listing text safe to show publicly: only text we wrote (catalog titles, demo-table items), else a placeholder. */
@@ -15,7 +16,14 @@ export const publicListing = (t: string) => (KNOWN_TITLES.has(t) ? t : "A listin
  */
 /** RELEASED and LAPSED come only from the hold sweeper (src/server/deals/sweep.ts). */
 export type RecordStatus = DealStatus | "RELEASED" | "LAPSED";
-export interface DealEvent { at: string; status: RecordStatus; note: string }
+/** Visa Direct payout events on the timeline (PLAN 3.17); they never change the deal's own status. */
+export type PayoutEventStatus = `PAYOUT_${Exclude<PayoutStatus, "NOT_CONFIGURED">}`;
+export interface DealEvent { at: string; status: RecordStatus | PayoutEventStatus; note: string }
+/** The public face of a Visa Direct payout: the last four digits of the recipient card at most, no Visa trace numbers. */
+export interface DealPayout {
+  status: Exclude<PayoutStatus, "NOT_CONFIGURED">; at: string; amountUsd: number; recipient: string | null;
+  transactionId: string | null; actionCode: string | null;
+}
 export interface DealRecord {
   _id: string; // dealId
   listing: string; amountUsd: number; status: RecordStatus; card: string | null; agent: string | null;
@@ -30,6 +38,8 @@ export interface DealRecord {
   label?: SaleLabel | null;
   /** a recall that matched this sale AFTER it was captured (recall watch, src/server/watch/) */
   postSaleRecall?: { recallNumber: string; title: string; url: string; at: string } | null;
+  /** the Visa Direct push to the seller after capture (src/server/visa/direct.ts) */
+  payout?: DealPayout | null;
 }
 export interface SaleLabel { model: string | null; batch: string | null; date: string | null; upc: string | null }
 
@@ -98,6 +108,31 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
   });
 }
 
+/** Records a Visa Direct payout on a captured deal's timeline. NOT_CONFIGURED is never recorded (nothing claims
+ *  Visa Direct unless it is live), and a duplicate call (the payout was already claimed) records nothing. */
+export function recordPayout(r: PayoutResult) {
+  return safely("recordPayout", async () => {
+    if (r.status === "NOT_CONFIGURED" || r.duplicate) return false;
+    const c = await deals();
+    if (!c) return false;
+    const at = new Date().toISOString();
+    const payout: DealPayout = { status: r.status, at, amountUsd: r.amountUsd, recipient: r.recipient,
+      transactionId: r.transactionIdentifier ?? null, actionCode: r.actionCode ?? null };
+    const note = r.status === "SENT" ? `Visa Direct pushed $${r.amountUsd.toFixed(2)} to the seller (${r.recipient}, Visa's sandbox test recipient)${r.transactionIdentifier ? `, transaction ${r.transactionIdentifier}` : ""}`
+      : r.status === "UNCERTAIN" ? `Visa Direct payout unconfirmed: ${r.note}`
+      : `Visa Direct payout failed: ${r.note}`;
+    const event: DealEvent = { at, status: `PAYOUT_${r.status}`, note };
+    // only a captured deal is paid out, and only its first payout is recorded
+    const update = () => c.updateOne({ _id: r.dealId, status: "CAPTURED", payout: { $in: [null] } }, { $set: { payout, updatedAt: at }, $push: { events: event } });
+    let res = await update();
+    for (let i = 0; i < 3 && res.matchedCount === 0; i++) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      res = await update();
+    }
+    return res.modifiedCount === 1;
+  }, 12_000);
+}
+
 /** Only fields a buyer and seller both see at the curb; no card data, no Visa ids. */
 export type PublicDeal = Omit<DealRecord, "_id" | "authId" | "label"> & { dealId: string };
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -106,7 +141,7 @@ export const pub = (d: DealRecord): PublicDeal => { const { _id, authId, label, 
 /** What the PUBLIC board and its change stream show for one deal: an explicit allowlist (never authId, never
  *  sweepAttemptAt, never a field added later by accident), and only listing text we wrote (catalog titles,
  *  demo-table items) verbatim; anything else a buyer typed becomes "A listing". */
-export type BoardDeal = Pick<PublicDeal, "dealId" | "listing" | "amountUsd" | "status" | "card" | "agent" | "createdAt" | "updatedAt" | "events" | "verdict" | "passportPath">;
+export type BoardDeal = Pick<PublicDeal, "dealId" | "listing" | "amountUsd" | "status" | "card" | "agent" | "createdAt" | "updatedAt" | "events" | "verdict" | "passportPath" | "payout">;
 export function boardDeal(d: DealRecord): BoardDeal {
   const out: BoardDeal = {
     dealId: d._id, listing: KNOWN_TITLES.has(d.listing) ? d.listing : "A listing", amountUsd: d.amountUsd, status: d.status,
@@ -114,6 +149,9 @@ export function boardDeal(d: DealRecord): BoardDeal {
   };
   if (d.verdict !== undefined) out.verdict = d.verdict;
   if (d.passportPath !== undefined) out.passportPath = d.passportPath;
+  // an explicit copy of the public payout fields, so a field added to the stored object later never leaks
+  if (d.payout) out.payout = { status: d.payout.status, at: d.payout.at, amountUsd: d.payout.amountUsd, recipient: d.payout.recipient,
+    transactionId: d.payout.transactionId, actionCode: d.payout.actionCode };
   return out;
 }
 

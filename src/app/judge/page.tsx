@@ -17,6 +17,7 @@ const LIVE_LABEL: Record<string, string> = {
   elevenlabs: "ElevenLabs spoken verdict",
   tap: "Trusted Agent Protocol signing key",
   solana: "Solana devnet passport",
+  visaDirect: "Visa Direct seller payout (Visa Developer sandbox)",
 };
 
 /** The judge's door: no login, no key, every step runs against this deployment. */
@@ -38,6 +39,8 @@ export default async function JudgePage() {
         : "On /pickup the scan decides CAPTURE or REVERSE. The Visa hold itself needs sandbox keys on this deployment (see the live list below); it is verified by tests/visa.live.test.ts.",
       link: "/pickup", cta: "Open pickup scan" },
     { t: "Get the item's passport", d: "When a clean label captures the payment, a Solana devnet transaction stores the SHA-256 of the pickup record (no personal data on chain). The passport page reads it back and checks the signer, the transaction and the hash.", link: "/pickup", cta: "Capture a clean deal on /pickup" },
+    // wired-or-cut: this step exists only when /api/health reports Visa Direct configured on this deployment
+    ...(live.visaDirect && live.visa ? [{ t: "Watch the seller get paid", d: "Right after a capture, Visa Direct pushes the captured amount to the seller as a real Visa Developer sandbox push funds transaction (to Visa's sandbox test recipient card, since a demo seller has no card). The outcome and Visa's transaction id land on the deal's timeline, the board and the Trust and Safety console. Connectivity check:", code: `curl ${base}/api/health/visa-direct`, link: "/board", cta: "Open the deal board" }] : []),
     { t: "Pay again with a saved card", d: "Tick “Save this card with Visa” on the first hold. Next time, “Use my saved card” pays with Visa's Token Management Service; the card stays in Visa's vault. When Visa applies a card-linked offer, the hold is the discounted amount and the saving is shown.", link: "/pickup", cta: "Open pickup" },
     { t: "The phone app", d: "The same product as an iOS and Android app (Expo, built with EAS): shop, scan a label with the camera, and the deal board, all on this deployment's API. On Android, download and install the APK; the source is in mobile/.", link: "https://github.com/StephenSook/secondhand-safe/releases/tag/mobile-v1.0.0", cta: "Get the Android APK" },
     { t: "Watch it from the seller's side", d: "After you press Agree on /pickup, a QR code appears. Scan it with a second phone: the seller's live view (MongoDB Atlas) follows the same deal to CAPTURED or REVERSED, with the reason. Every deal is also on the board.", link: "/board", cta: "Open the deal board" },
@@ -80,7 +83,7 @@ export default async function JudgePage() {
             <ul className="mt-5 grid sm:grid-cols-2 gap-3">
               <li className="flex items-center gap-3 font-bold"><span className="rounded-full bg-green px-2.5 py-0.5 text-xs">LIVE</span>CPSC recall index + matcher</li>
               <li className="flex items-center gap-3 font-bold"><span className="rounded-full bg-green px-2.5 py-0.5 text-xs">LIVE</span>Banned-type classifier results</li>
-              {Object.entries(live).map(([k, on]) => (
+              {Object.entries(live).filter(([k, on]) => on || k !== "visaDirect").map(([k, on]) => (
                 <li key={k} className="flex items-center gap-3 font-bold">
                   <span className={`rounded-full px-2.5 py-0.5 text-xs ${on ? "bg-green" : "bg-paper/15 text-paper/70"}`}>{on ? "LIVE" : "NOT YET"}</span>
                   {LIVE_LABEL[k]}

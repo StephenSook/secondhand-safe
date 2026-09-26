@@ -6,6 +6,7 @@ import { settle } from "@/server/deals/settle";
 import type { ProductClass } from "@/core/verdict";
 import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
 import { recordSettlement } from "@/server/deals/store";
+import { payoutAfterCapture } from "@/server/deals/payout";
 import { waitUntil } from "@vercel/functions";
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
@@ -49,10 +50,13 @@ export async function POST(request: Request) {
       passport = { error: `Passport not written: ${(e as Error).message}` };
     }
   }
-  waitUntil(recordSettlement(deal.dealId, { status: out.status,
+  const recorded = recordSettlement(deal.dealId, { status: out.status,
     verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
     passportPath: passport && "path" in passport ? passport.path : null,
-    label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } }));
+    label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } });
+  // Visa Direct seller payout (PLAN 3.17), only after a confirmed capture, in the background: it never delays or
+  // changes this response. It runs after the settlement write so the timeline reads CAPTURED, then the payout.
+  waitUntil(out.status === "CAPTURED" ? recorded.then(() => payoutAfterCapture({ dealId: deal.dealId, amountUsd: deal.amountUsd })) : recorded);
   return Response.json({
     dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
     visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },
