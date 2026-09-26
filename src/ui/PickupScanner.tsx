@@ -101,10 +101,11 @@ export function PickupScanner() {
     } catch {}
   }, []);
 
-  const saveDeal = (d: Deal | null) => {
+  /** Returns whether the deal reached storage (the pending marker is only cleared when it did). */
+  const saveDeal = (d: Deal | null): boolean => {
     dealRef.current = d;
     setDeal(d);
-    try { if (d) sessionStorage.setItem(DEAL_KEY, JSON.stringify(d)); else sessionStorage.removeItem(DEAL_KEY); } catch {}
+    try { if (d) sessionStorage.setItem(DEAL_KEY, JSON.stringify(d)); else sessionStorage.removeItem(DEAL_KEY); return true; } catch { return false; }
   };
 
   const [agentMsg, setAgentMsg] = useState<{ ok: boolean; text: string; sig?: string } | null>(null);
@@ -139,8 +140,7 @@ export function PickupScanner() {
       if (!r.ok) { noHold = explicitlyNoHold(j); throw new Error(j.error ?? `HTTP ${r.status}`); }
       const m = j.merchant;
       if (m.status === "HELD" && m.token) {
-        saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at, card: m.card });
-        noHold = true; // the hold is now the open deal; the pending marker is no longer needed
+        noHold = saveDeal({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token, authId: m.visa.authId, status: "HELD", at: m.at, card: m.card }); // the stored deal replaces the pending marker
         setVerdict(null);
         setAgentMsg({ ok: true, text: `The merchant checked the signature: this came from our registered agent (key ${m.tap?.keyid}) and was not altered on the way. Then Visa held the payment.`, sig: j.agent["signature-input"] });
       } else {
@@ -159,11 +159,14 @@ export function PickupScanner() {
     setDealErr("");
     const usingSaved = !!(useSaved && saved);
     if (!usingSaved && card.state === "loading") return setDealErr("Visa's card fields are still loading.");
-    if (!beginHold()) return;
+    const existing = openHold();
+    if (existing) { setDealErr(existing.text); return; }
     let noHold = false;
     setBusy(!usingSaved && card.state === "ready" ? "Visa is sealing the card into a one-time token…" : "Asking Visa to authorize and hold…");
     try {
       const transientTokenJwt = !usingSaved && card.state === "ready" ? await card.tokenize() : undefined;
+      // the pending marker goes down only now, right before Visa is called: a card-field error above left no hold
+      if (!beginHold()) return;
       setBusy("Asking Visa to authorize and hold…");
       const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd,
@@ -183,9 +186,8 @@ export function PickupScanner() {
           setDealErr("Held. Visa saved the card, but this browser blocks storage, so it cannot be offered next time.");
         }
       }
-      saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card,
-        promotion: j.promotion, askedUsd: j.askedUsd });
-      noHold = true; // now the open deal
+      noHold = saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card,
+        promotion: j.promotion, askedUsd: j.askedUsd }); // the stored deal replaces the pending marker
       setVerdict(null);
     } catch (e) {
       setDealErr((e as Error).message);
@@ -438,7 +440,9 @@ export function PickupScanner() {
               {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
               {deal.status === "HELD"
                 ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>
-                : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">Start a new deal</button>}
+                : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">
+                    {deal.status === "UNKNOWN" ? "I checked the Visa Business Center: start a new deal" : "Start a new deal"}
+                  </button>}
             </>
           )}
           {agentMsg && (

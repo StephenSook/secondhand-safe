@@ -21,9 +21,13 @@ export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   if (!underLimit(`agent:${ip}`, 20)) return Response.json({ placed: false, error: "Too many agent checkouts; wait a minute." }, { status: 429 });
   const b = (await request.json().catch(() => null)) as { listingId?: string; listing?: string; amountUsd?: number; tamper?: boolean } | null;
-  let listing: string = DEMO_TABLE[0].label;
-  let amountUsd: number = DEMO_TABLE[0].amountUsd;
-  if (typeof b?.listingId !== "string" && (b?.listing !== undefined || b?.amountUsd !== undefined)) {
+  // exactly one explicit shape: a catalog listingId, or a demo-table item (label + amount); nothing defaults
+  if (typeof b?.listingId !== "string" && (b?.listing === undefined || b?.amountUsd === undefined)) {
+    return Response.json({ placed: false, error: "Send a listingId (a pre-screened catalog listing) or a demo-table item (listing and amountUsd)." }, { status: 400 });
+  }
+  let listing = "";
+  let amountUsd = NaN;
+  if (typeof b?.listingId !== "string") {
     // free text is only for the items on our demo table; anything else must be a pre-screened catalog listing
     const item = DEMO_TABLE.find((d) => d.label === b?.listing && d.amountUsd === b?.amountUsd);
     if (!item) return Response.json({ placed: false, error: "The agent only buys a catalog listing (listingId) or an item on our demo table." }, { status: 400 });
