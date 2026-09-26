@@ -154,9 +154,9 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 5.2 | Atlas Vector Search: "this photo looks like recalled product X" over the 243 CPSC recall photos + listing photos (CLIP, 512-d) | `src/server/db/vector.ts`, `/pickup`, `/shop` | **Stephen** | ✅ | 3.11 | PR #32 merged + deployed; verified live (POST embedding and GET ?listingId=). Held-out eval: right recall first 60/144 (41.7%), top-3 68/144 (47.2%), reproducible (ml/sample_second_photos.py + scripts/eval-lookalike.mjs). Reviewed by Claude + Grok. Resemblance never flags anything. |
 | 5.3 | Change stream -> `/api/stream` SSE -> live `/board` | `src/app/api/stream/route.ts` | **Stephen** | ✅ | 3.11 | Done as 6.3 (PR #38). |
 | 5.4 | Hold sweeper: Vercel cron reverses holds past their window; the board shows RELEASED | `src/app/api/cron/**`, `vercel.json` | **Stephen** | ✅ | 1.5 | PR #28 merged + deployed. Daily Vercel cron 13:17 UTC (9:17 AM ET). 3 review rounds (Claude x2, Grok). Verified live: 401 without CRON_SECRET, 200 with it. |
-| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID). Demo replays 26-568, labelled as a replay | `src/server/watch/**`, `public/sw.js` | **Stephen** | ✅ | 3.11, 3.12 | Done as 6.2 (PR #37). |
+| 5.5 | Recall watch: a new recall re-checks every stored deal + passport, marks "recalled after sale", web push to the owner (VAPID) | `src/server/watch/**`, `public/sw.js` | **Stephen** | ✅ | 3.11, 3.12 | Done as 6.2 (PR #37). CORRECTION 4:45 PM: the shipped demo is a typed hypothetical model on /watch (e.g. ZZT9Q41X), not a replay of 26-568; the 26-568 replay is row 6.12. |
 | 5.6 | ElevenLabs conversational shopping agent (Agents Platform) with a server tool calling `/api/shop`, EN + ES | `src/ui/VoiceAgent.tsx`, `scripts/elevenlabs-agent.mjs` | **Stephen** | ✅ | 2.7 | PR #27 merged + deployed. 10 Codex rounds; live: signed session URL for our pages, 403 cross-site, webhook 200 with the secret and 401 without. |
-| 5.7 | Solana passport as a Metaplex Core asset with Attributes (verdict, index date, record hash), updated on recall | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | Not started. Memo passport (3.12) is live and verifiable. |
+| 5.7 | Solana passport as a Metaplex Core asset with Attributes (verdict, index date, record hash), updated on recall | `src/server/solana/**` | **Stephen** | 🟡 | 3.12 | Same as 6.4 (PR #40). |
 | 5.8 | `/trust` Trust and Safety console: reversals by reason, disputes avoided, flag trend, drawn with Visa Chart Components | `src/app/trust/**` | **Stephen** | ✅ | 5.3 | PR #30 merged + deployed: /trust and /api/trust, live from Atlas, says plainly the deals are our demos and e2e tests. |
 | 5.9 | "Without vs With" replay: the same deal on a cash marketplace vs a held Visa payment | `src/app/board/**` | **Stephen** | ⬜ | 5.3 | Not started. |
 | 5.10 | Second trained model: YOLO label finder (box the label, crop, then read); report read rate with and without it | `ml/**` | **Stephen** | ⬜ | 1.8 | Not started. |
@@ -177,18 +177,24 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 6.1 | Merge the voice agent (#27) after a clean review round; prove it end to end with ElevenLabs' simulated conversation (the agent calls our live webhook) | `src/ui/VoiceAgent.tsx` | **Stephen** | ✅ | 5.6 | Merged + deployed; verified live (see 5.6). |
 | 6.2 | Recall watch: store the label fields at settlement; a labelled replay of a real CPSC recall re-checks every captured deal, marks "recalled after sale" on the deal, board, seller view and /trust, and pushes a notification to a subscribed browser | `src/server/watch/**`, `public/sw.js` | **Stephen** | ✅ | 3.11 | PR #37 merged + deployed (Grok review fixed: simulation counts only, only your own sale is notified, labels never public, failed pushes retried). Live: prod e2e captured 2 sales, simulate ZZT9Q41X -> 2 affected. |
 | 6.3 | MongoDB change stream -> SSE -> /board updates the moment a deal changes | `src/app/api/stream/route.ts` | **Stephen** | ✅ | 3.11 | PR #38 merged + deployed: Atlas change stream -> SSE, polling fallback; live test: events in 30-280 ms, no Visa ids. |
-| 6.4 | Solana passport as a Metaplex Core asset with on-chain Attributes, updated by the recall watch | `src/server/solana/**` | **Stephen** | ⬜ | 3.12 | Memo stays as the audit trail. |
+| 6.4 | Solana passport as a Metaplex Core asset with on-chain Attributes, updated by the recall watch | `src/server/solana/**` | **Stephen** | 🟡 | 3.12 | PR #40, Sat 4:45 PM. Live devnet asset minted + updated. Codex round 1: 4 highs (wallet drain, orphaned mints, stale recall, cron budget), all fixed with tests (220/220, CI 7/7 on ec642c2). Codex round 2 running. Memo stays as the audit trail. |
 | 6.5 | Server-side one-active-hold per buyer (signed browser id + atomic Atlas claim) and Atlas-backed rate limits (today both are per tab / per server instance) | `src/app/api/checkout/**` | **Stephen** | ⬜ | 1.5 | Money path: adversarial review before merge. |
 | 6.6 | TestFlight upload of the signed iOS build | `mobile/**` | **Stephen** | ⛔ | H8 | Needs the App Store Connect app record (H8). |
 | 6.7 | Second trained model: YOLO label finder (5.10) | `ml/**` | **Stephen** | ⬜ | 1.8 | |
-| 6.8 | Refresh both PDFs + README known limits after 6.1-6.5 | `~/Desktop/*.pdf`, `README.md` | **Stephen** | ⬜ | 6.1 | |
-| 6.9 | Stills of every judge screen, claims audit, Devpost draft through the Devpost connector (not submitted) | `docs/` | **Stephen** | ⬜ | 6.8 | |
+| 6.8 | Refresh both PDFs + README known limits after 6.1-6.5 | `~/Desktop/*.pdf`, `README.md` | **Stephen** | 🟡 | 6.1 | PDFs refreshed 4:18 PM (product guide 25 p, Tylin guide 34 p, 40 Q&As). README known-limits paragraph (per-tab hold guard) still to write; re-render PDFs after #40 merges. |
+| 6.9 | Stills of every judge screen, claims audit, Devpost draft through the Devpost connector (not submitted) | `docs/` | **Stephen** | ⬜ | 6.8 | Devpost draft exists (id 1445288); add voice agent, recall watch, live board, Core passport. |
+| 6.10 | Our own WebAuthn passkey step-up at "Agree to buy" (a real browser passkey bound to the hold; NOT branded "Visa Payment Passkey", which needs VDP) | `src/app/api/passkey/**`, `/pickup`, `/shop` | **Stephen** | ⬜ | 1.5 | Money path: adversarial review before merge. |
+| 6.11 | `/checkpoint` table kiosk without the hardware: full-screen verdict, keyboard-wedge barcode input (a USB scanner types like a keyboard, so it works the moment one is plugged in), a sound per state | `src/app/checkpoint/**` | **Stephen** | ⬜ | 1.9 | Same as 5.12; hardware (H5) becomes optional. |
+| 6.12 | Recall-watch replay of a REAL recall: pick one CPSC recall whose model appears on a captured demo sale's label, replay it through the real daily path (labelled "replay"), show the push + board + passport flip | `src/server/watch/**`, `/watch` | **Stephen** | ⬜ | 6.2, 6.4 | Closes the 5.5 wording gap found by the PDF audit. |
+| 6.13 | Look-alike data check: recall 26569 shows a Joolz title beside a CooCooBaby notice; audit title/notice/image alignment across all 243 recall photos and re-index | `ml/**`, Atlas `image_vectors` | **Stephen** | ⬜ | 5.2 | Found by the PDF writer 4:18 PM. A judge could see the mismatch. |
+| 6.14 | "Without vs With" replay (5.9) | `src/app/board/**` | **Stephen** | ⬜ | 6.3 | |
+| 6.15 | Visa Direct seller payout after capture (3.17) the moment Tylin's VDP project exists | `src/server/visa/direct.ts` | **Stephen** | ⛔ | H1 | Tylin T6. |
 
 ### Human-only steps (account creation, sign-ins, physical parts: Claude cannot do these)
 
 | # | Step | Who | What it unlocks |
 |---|---|---|---|
-| H1 | Create a free Visa Developer Platform account + a sandbox project with Visa Direct (Push Funds). Claude then does the CSR, the cert and the code | Tylin or Stephen | Seller payout after capture (3.17): the Visa "payments" stage end to end |
+| H1 | Create a free Visa Developer Platform account + a sandbox project with Visa Direct (Push Funds). Claude then does the CSR, the cert and the code | **Tylin, tonight (TYLIN_TASKS T6)** | Seller payout after capture (3.17): the Visa "payments" stage end to end |
 | H2 | Sign up for Tiger Data (Tiger Cloud free trial), AirDrop the connection string | Stephen | Scan-history hypertable + trend on /trust: MLH Tiger Data |
 | H3 | Sign up for Backboard, AirDrop the API key | Stephen | The agent remembers the child's age and past buys: MLH Backboard |
 | H4 | Vultr, only if the MLH credit works without a card on file | Stephen | GPU inference box: MLH Vultr |
@@ -215,6 +221,7 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 | PR | What | State | Merge rule |
 |---|---|---|---|
+| #40 | Solana passport as a Metaplex Core asset (6.4) | CI 7/7 green on ec642c2; Codex round 2 running | Merge only after a clean Codex round + per-SHA CI; then deploy and verify a live capture mints an asset |
 
 Deploys are manual (no Git auto-deploy): from a clean `git worktree add --detach <dir> origin/main`, copy `.vercel/`,
 check `projectName` is `secondhand-safe-web`, then `npx vercel --prod --yes`. Verify with the probe (both origins).
@@ -276,8 +283,8 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 
 ## Open Questions
 
-- [ ] **Q1:** Does Visa hand out Intelligent Commerce sandbox creds at the event? Ask at the Sat 10 AM
-  workshop. Needs Stephen + Tylin.
+- [x] **Q1:** Visa Intelligent Commerce: ANSWERED Sat 3:07 PM in #visa by Visa staff: "Unfortunately that is
+  not a public platform". Never claim it (D6).
 - [ ] **Q2:** Which Gemini model ID is live today? List models at H0 and pin it in `label.ts`. Needs
   Stephen.
 - [ ] **Q3:** Does the Visa Acceptance Test Business Center show our sandbox transactions in Transaction
@@ -295,4 +302,4 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 5. Secrets never in git: `.env.local` only, plus Vercel and GitHub secrets.
 6. Every number in the README, `/judge`, the video or Devpost comes from `docs/FACTS.json`.
 
-_Last updated: 2026-09-26 17:15 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
+_Last updated: 2026-09-26 16:45 ET by Stephen (Claude). Tylin: start with TYLIN_TASKS.md._
