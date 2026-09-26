@@ -89,7 +89,7 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
-| 1.1 | Trusted Agent Protocol sign + verify + tamper tests | `src/server/tap/tap.ts`, `tests/tap.test.ts` | **Stephen** | 🟡 | 0.3 | PR #10: RFC 9421 Ed25519, Visa reference header shape + @method + content-digest; 7 unit tests; e2e tamper-refused / signed-held. In adversarial review. Prod needs TAP key pushed. | |
+| 1.1 | Trusted Agent Protocol sign + verify + tamper tests | `src/server/tap/tap.ts`, `tests/tap.test.ts` | **Stephen** | ✅ | 0.3 | Merged PR #10 + review fixes (signature before nonce, capped nonce, identity+integrity wording, $200 agent cap). Prod needs TAP key pushed. | | | |
 | 1.2 | Recall index: CPSC + NHTSA → Atlas, with a 20-record hand check | `data/build_recall_index.py`, `data/handcheck.md` | **Stephen** | ✅ | 0.5 | 6,036 CPSC recalls -> 1,137 nursery; 383 with identifiers. Regex only: Gemini pass built, blocked by the 402. data/handcheck.md: 3 defects found and fixed. NHTSA car seats not added yet. | |
 | 1.3 | Verdict rules + fuzzy matcher (O/0, I/1 folding) | `src/core/verdict.ts`, `src/server/recalls/match.ts` | **Stephen** | ✅ | 1.2 | src/server/recalls/match.ts + tests: folding, batch rule (26-061 recalls BHC001 only in batch 202408), D3 rules, junk-id guard. | |
 | 1.4 | Atlas indexes + change stream → `/api/stream` (SSE) | `src/server/db/mongo.ts`, `src/app/api/stream/route.ts` | **Tylin** | ⬜ | 0.5 | M0 allows 3 search/vector indexes max. |
@@ -125,17 +125,17 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | # | Component | File(s) | Owner | Status | Deps | Notes |
 |---|---|---|---|---|---|---|
 | 3.1 | Expo iOS pickup scanner (on-device OCR) | `mobile/**` | **Stephen** | ⬜ | 1.5 | Runs on Stephen's iPhone. The PWA stays the judge path. |
-| 3.2 | `/map` (deck.gl hex), `/atlas` (embedding-atlas), `/trust` (T&S console), `/judge`, `/passport/[id]` | `src/app/**` | **Stephen** | 🟡 | 2.9 | /judge ✅, /map ✅ (602 Atlanta listings, OpenFreeMap). Not built: /atlas embedding view, /trust console, /passport (needs Solana). | |
+| 3.2 | `/map` (deck.gl hex), `/atlas` (embedding-atlas), `/trust` (T&S console), `/judge`, `/passport/[id]` | `src/app/**` | **Stephen** | 🟡 | 2.9 | /judge ✅, /map ✅, /atlas ✅ (t-SNE of 1,834 images). Not built: /trust console, /passport (needs Solana devnet SOL: faucet dry). | | | |
 | 3.3 | MCP server `recall_check` for AI shopping agents (HTTP) | `src/app/api/mcp/route.ts` | **Tylin** | ⬜ | 2.2 | Print the curl and the MCP config in the README. |
 | 3.4 | FACTS test: README, `/judge`, submission numbers equal `docs/FACTS.json` | `tests/facts.test.ts` | **Stephen** | ✅ | 2.9 | tests/facts.test.ts: README numbers == docs/FACTS.json. | |
 | 3.5 | Codex adversarial review of payments + TAP + matcher, repeated until a clean round | n/a | **Tylin** | ⬜ | 1.5 | Before footage. Record rounds in Notes. |
-| 3.6 | Stills of every judge page (desktop + phone) from the deployed origin | `docs/stills/` | **Stephen** | 🟡 | 2.1 | scripts/stills.mjs (Chromium desk + WebKit phone). Local stills clean; re-run from the deployed origin after each deploy. | |
+| 3.6 | Stills of every judge page (desktop + phone) from the deployed origin | `docs/stills/` | **Stephen** | ✅ | 2.1 | Stills of /, /pickup, /judge, /map, /atlas from the deployed origin, desktop + phone: 0 console errors, 0 overflow (Sat 5:55 AM). Re-run after key push. | | | |
 | 3.7 | Tier 3 (only once Phase 1-2 are ✅ on main): Vultr inference, Tiger Data trend, Backboard memory, YOLO label finder, Apple Wallet pass, USDC payout | various | split | ⬜ | Phase 2 | Each gets wired or cut, never claimed half-built. |
 | 3.8 | Aardvark-style motion system + art (design study docs/design/aardvark-reference.md) | `src/ui/**`, `public/art/**` | **Stephen** | ✅ | n/a | Preloader stroke wipe, elastic words, fanned cards, pinned scroll-scrub scan (generated, captioned), floating gear, parallax footer. |
 | 3.9 | Microform card entry (replaces the server-side sandbox test card) | `src/server/visa/microform.ts`, `/pickup` | **Tylin** | ⬜ | 0.6 | Capture context POST /microform/v2/sessions; transientTokenJwt into authorize(). |
-| 3.10 | TAP-signed agent checkout (RFC 9421 ed25519) + tamper demo | `src/server/tap/**` | **Stephen** | 🟡 | 1.5 | Same as 1.1 (PR #10). | |
+| 3.10 | TAP-signed agent checkout (RFC 9421 ed25519) + tamper demo | `src/server/tap/**` | **Stephen** | ✅ | 1.5 | Same as 1.1. | | | |
 | 3.11 | Atlas: recalls + deals + listings, change stream -> Deal Board | `src/server/db/**`, `/board` | **Tylin** (DB) + **Stephen** (board) | ⬜ | 0.5 | Needs the Atlas M0 account first. |
-| 3.12 | Solana devnet passport + memo of the verification hash | `src/server/solana/**` | **Tylin** | ⬜ | 1.5 | Devnet only; no account needed. |
+| 3.12 | Solana devnet passport + memo of the verification hash | `src/server/solana/**` | **Tylin** | ⬜ | 1.5 | BLOCKED: devnet faucet 'limit reached / run dry' (429). Needs Stephen: faucet.solana.com (GitHub login) for a devnet wallet. | |
 | 3.13 | NHTSA child-seat recalls into the index | `data/build_recall_index.py` | **Stephen** | ✅ | 1.2 | 71 NHTSA child-restraint campaigns with manufacture date ranges; date rule in the matcher (PR #8). | |
 | 3.14 | Expo iOS pickup scanner | `mobile/**` | **Stephen** | ⬜ | 1.9 | The PWA is the judge path. |
 | 3.15 | Seller-side confirmation of the pickup scan (today the buyer's device reports it; review finding) | `/pickup`, `src/app/api/pickup/**` | **Tylin** + **Stephen** | ⬜ | 1.5 | Seller confirms the verdict on their phone, or the photo evidence is verified server-side, before a reversal. |
@@ -226,4 +226,4 @@ enables it. Webhooks are skipped (1-2 business day approval). **Locked 2026-09-2
 5. Secrets never in git: `.env.local` only, plus Vercel and GitHub secrets.
 6. Every number in the README, `/judge`, the video or Devpost comes from `docs/FACTS.json`.
 
-_Last updated: 2026-09-26 05:25 ET by Stephen (Claude)._
+_Last updated: 2026-09-26 05:55 ET by Stephen (Claude)._
