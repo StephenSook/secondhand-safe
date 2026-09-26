@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
+    "@gsap/react": "^2.1.2",
     "@huggingface/transformers": "^4.3.0",
     "@visa/charts-react": "^5.1.0",
     "@visa/nova-icons-react": "^4.0.0",

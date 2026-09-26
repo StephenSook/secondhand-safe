@@ -1,26 +1,200 @@
 @import "tailwindcss";
 
+/*
+ * SecondHand Safe design system.
+ * State colors carry meaning everywhere: HELD amber, CAPTURED green, REVERSED red. Color is never the only
+ * signal; every state also has a word and an icon.
+ * Motion vocabulary adapted from the reference study (docs/design/aardvark-reference.md): things arrive
+ * squashed, tilted and small, then overshoot into place.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --amber: #ffb020;
+  --amber-deep: #f08c00;
+  --amber-soft: #ffe7b0;
+  --green: #1fa35b;
+  --green-deep: #0f7a40;
+  --green-soft: #cff1dc;
+  --red: #e5484d;
+  --red-deep: #b4232a;
+  --red-soft: #ffd9d7;
+  --ink: #14163a;
+  --ink-soft: #3a3d6b;
+  --paper: #fff8ec;
+  --sand: #f6e7c8;
+  --aqua: #9fe3e0;
+  --aqua-soft: #ddf7f5;
+  --teal: #0e6e6e;
+  --visa: #1434cb;
+  --pink: #ff5fa2;
+
+  --ease-osmo: cubic-bezier(0.625, 0.05, 0, 1);
+  --ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-soft-overshoot: cubic-bezier(0.59, 1, 0.88, 1.01);
+  --ease-bounce: cubic-bezier(0.34, 1.57, 0.64, 1);
+  --button-ease-bounce: cubic-bezier(0.34, 2.27, 0.64, 1);
+  --ease-elastic-out: linear(0, 0.5737 7.6%, 0.8382 11.87%, 0.9463 14.19%, 1.0292 16.54%, 1.0886 18.97%,
+      1.1258 21.53%, 1.137 22.97%, 1.1424 24.48%, 1.1423 26.1%, 1.1366 27.86%, 1.1165 31.01%, 1.0507 38.62%,
+      1.0219 42.57%, 0.9995 46.99%, 0.9872 51.63%, 0.9842 58.77%, 1.0011 81.26%, 1);
+
+  --radius-card: 2em;
+  --radius-section: 3.5em;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-amber: var(--amber);
+  --color-amber-deep: var(--amber-deep);
+  --color-amber-soft: var(--amber-soft);
+  --color-green: var(--green);
+  --color-green-deep: var(--green-deep);
+  --color-green-soft: var(--green-soft);
+  --color-red: var(--red);
+  --color-red-deep: var(--red-deep);
+  --color-red-soft: var(--red-soft);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-paper: var(--paper);
+  --color-sand: var(--sand);
+  --color-aqua: var(--aqua);
+  --color-aqua-soft: var(--aqua-soft);
+  --color-teal: var(--teal);
+  --color-visa: var(--visa);
+  --color-pink: var(--pink);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-body);
+  --font-hand: var(--font-hand);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Poster scaling: 16px at 1440 wide, clamped so phones stay readable. */
+html {
+  font-size: clamp(15px, calc(100vw / 90), 22px);
+  background: var(--paper);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--amber);
+  color: var(--ink);
+}
+
+.display {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.86;
+}
+
+.hand {
+  font-family: var(--font-hand), cursive;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Section card: full-bleed saturated block with big rounded corners (reference technique: stacked color cards). */
+.section-card {
+  border-radius: var(--radius-section);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Squash-and-bounce button: the two scales multiply to exactly 1, so it squashes then springs back. */
+.btn {
+  --btn-bg: var(--ink);
+  --btn-fg: var(--paper);
+  --btn-accent: var(--amber);
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.25em;
+  font-weight: 800;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: scale 0.15s var(--ease-soft-overshoot), transform 0.35s var(--button-ease-bounce) 0.15s;
+  user-select: none;
+}
+.btn > .btn-label {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  padding: 1em 1.35em;
+  border-radius: 999px;
+  transition: transform 0.35s var(--button-ease-bounce);
+}
+.btn > .btn-icon {
+  background: var(--btn-accent);
+  color: var(--ink);
+  width: 3em;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  transition: transform 0.35s var(--button-ease-bounce);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    scale: 0.955 0.925;
+    transform: scale(1.0471204188, 1.0810810811);
+  }
+  .btn:hover > .btn-label {
+    transform: rotate(-2deg);
+  }
+  .btn:hover > .btn-icon {
+    transform: rotate(-18deg) translateX(0.15em);
+  }
+}
+.btn:active {
+  scale: 0.955 0.925;
+}
+.btn:focus-visible {
+  outline: 3px solid var(--visa);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+/* Rubber-stamp verdict */
+.stamp {
+  display: inline-block;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 0.18em solid currentColor;
+  border-radius: 0.35em;
+  padding: 0.25em 0.55em;
+  mask-image: url("/art/grain.svg");
+  mask-size: 180px;
+}
+
+.state-held { --state: var(--amber); --state-soft: var(--amber-soft); --state-deep: var(--amber-deep); }
+.state-captured { --state: var(--green); --state-soft: var(--green-soft); --state-deep: var(--green-deep); }
+.state-reversed { --state: var(--red); --state-soft: var(--red-soft); --state-deep: var(--red-deep); }
+
+/* Marquee ribbons */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  animation: marquee 32s linear infinite;
+  width: max-content;
+}
+
+/* Words start hidden only when JS is running and motion is allowed, so no-JS and reduced-motion see text. */
+html.js-motion [data-reveal] {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .marquee-track { animation: none; }
 }
