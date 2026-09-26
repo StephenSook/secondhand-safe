@@ -137,8 +137,14 @@ Task-level TDD steps with code: `docs/IMPLEMENTATION.md`. If this file drifts fr
 | 3.11 | Atlas: recalls + deals + listings, change stream -> Deal Board | `src/server/db/**`, `/board` | **Tylin** (DB) + **Stephen** (board) | ✅ | 0.5 | Atlas M0 "lullabuy": deals recorded via waitUntil; /board; e2e seller.spec on prod. |
 | 3.12 | Solana devnet passport + memo of the verification hash | `src/server/solana/**` | **Stephen** (took over) | ✅ | 1.5 | Live: devnet wallet funded (faucet, Stephen GitHub auth); capture writes a Memo passport; /passport verifies signer + success + hash; e2e passport.spec on prod. | |
 | 3.13 | NHTSA child-seat recalls into the index | `data/build_recall_index.py` | **Stephen** | ✅ | 1.2 | 71 NHTSA child-restraint campaigns with manufacture date ranges; date rule in the matcher (PR #8). | |
-| 3.14 | Expo iOS pickup scanner | `mobile/**` | **Stephen** | ⬜ | 1.9 | The PWA is the judge path. |
+| 3.14 | Expo iOS pickup scanner | `mobile/**` | **Stephen** | 🟡 | 1.9 | Expo SDK 57 app in mobile/: Shop (Gemini agent), Scan (camera -> /api/label -> /api/check, spoken verdict), Deal board. Runs in Expo Go (iPhone: scan the QR from `npx expo start`). |
 | 3.15 | Seller-side confirmation of the pickup scan (today the buyer's device reports it; review finding) | `/pickup`, `src/app/api/pickup/**` | **Tylin** + **Stephen** | ✅ | 1.5 | Seller live view /deal/<id> via QR on the buyer pickup screen (reads Atlas every 3 s). The buyer device still reports the scan; noted in Q&A. |
+| 3.16 | Visa Token Management Service: save the card as a token at authorization (TOKEN_CREATE) and reuse it | `src/server/visa/**` | **Stephen** | ⬜ | 3.9 | Sandbox-only work, no new account needed. |
+| 3.17 | Visa Direct push payout to the seller after capture | `src/server/visa/**` | **Tylin** | ⛔ | 1.5 | BLOCKED: needs a Visa Developer Platform project + two-way SSL cert (account creation is a human step). |
+| 3.18 | MLH extras: Tiger Data (scan trend hypertable), Backboard (parent memory), Vultr (inference box) | various | split | ⛔ | 3.11 | BLOCKED: each needs an account created by a human; wire or cut, never claim half-built. |
+| 3.19 | YOLO label finder (box the label, then crop for Gemini) | `ml/**` | **Stephen** | ⬜ | 1.8 | Needs ~300 boxed label images; Gemini boxes + human spot check. |
+| 3.20 | Physical Pickup Checkpoint (Circuit Playground ring/buzzer, barcode scanner, NFC sticker) | `hardware/**` | **Stephen** | ⛔ | 1.9 | BLOCKED: needs the parts from the hardware desk in hand. |
+| 3.21 | Recall watch: re-check stored deals when a new recall lands, notify the owner | `src/server/**` | **Stephen** | ⬜ | 3.11 | Atlas now exists; push needs a subscribed device. |
 
 ### Phase 4: Freeze + submit (Sat 9 PM to Sun 8 AM)
 

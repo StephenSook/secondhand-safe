@@ -78,12 +78,18 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
    Solana devnet in a Memo transaction, which `/passport/<signature>` reads back and recomputes: it checks the
    signer is our passport key, that the transaction succeeded, and that the hash matches.
 
+## Mobile app (iOS and Android)
+
+`mobile/` is an Expo app (SDK 57) with three tabs that call the same live API: Shop (Gemini agent), Scan label
+(camera photo, Gemini reads it, the recall check runs, the phone speaks the verdict) and Deal board. To try it
+on a phone: install Expo Go, then `cd mobile && npm install && npx expo start` and scan the QR code.
+
 ## Repo map
 
 - `src/` Next.js 16 app: landing, `/shop`, `/pickup`, `/passport`, `/judge`, public API (`/api/check`, `/api/stats`, `/api/health`, `/api/label`, `/api/mcp`, `/api/shop`). Gemini in production uses no stored key: Vercel's OIDC token is exchanged through Google Workload Identity Federation (`src/server/ml/gcpToken.ts`).
 - `data/build_recall_index.py` CPSC recall index; `data/handcheck.md` the hand checks and the defects they found.
 - `ml/` harvest, review sheets, training, eval, scan, facts. `docs/design/` the motion reference study.
-- CI: lint, typecheck, unit tests, build, pytest, classifier parity (JS vs sklearn), Playwright e2e, gitleaks, em-dash gate.
+- `mobile/` Expo app. CI: lint, typecheck, unit tests, build, pytest, mobile typecheck and expo-doctor, classifier parity (JS vs sklearn), Playwright e2e, gitleaks, em-dash gate.
 
 ## Status and honesty
 

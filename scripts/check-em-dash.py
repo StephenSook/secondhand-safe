@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 EXTS = (".md", ".tsx", ".ts", ".mdx", ".json", ".html", ".css")
-SKIP = ("node_modules/", "ml/", "docs/IMPLEMENTATION.md", "package-lock.json", "AGENTS.md", "CLAUDE.md",
+SKIP = ("node_modules/", "ml/", "docs/IMPLEMENTATION.md", "package-lock.json", "AGENTS.md", "CLAUDE.md", "mobile/AGENTS.md", "mobile/CLAUDE.md",
         "scripts/check-em-dash.py", "docs/design/")
 BAD = {"—": "em dash", "–": "en dash"}
 
