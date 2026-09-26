@@ -445,7 +445,8 @@ export function PickupScanner() {
               {deal.status === "REFUSED" && <p className="mt-3 font-semibold">Visa refused to settle ({deal.reason ?? "no reason given"}){deal.reason === "MISSING_AUTH" ? ": this hold was already settled or is not open" : ""}. Visa did not apply it.</p>}
               {deal.status === "UNKNOWN" && <p className="mt-3 font-semibold">Visa did not answer. The settlement may have landed: do not retry; check the Visa Business Center.</p>}
               {deal.status === "HELD"
-                ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.</p>
+                ? <p className="mt-3 font-semibold">Held at Visa. Scan the label: the check decides capture or reversal.
+                    <a href="/checkpoint" className="block mt-1 underline font-bold">Or settle it at the table kiosk with a barcode scanner</a></p>
                 : <button type="button" onClick={() => { saveDeal(null); setVerdict(null); }} className="mt-4 rounded-full border-2 border-current px-4 py-2 font-extrabold">
                     {deal.status === "UNKNOWN" ? "I checked the Visa Business Center: start a new deal" : "Start a new deal"}
                   </button>}
