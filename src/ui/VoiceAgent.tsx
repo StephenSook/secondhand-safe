@@ -35,8 +35,13 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
   const [agentLine, setAgentLine] = useState("");
   const [userLine, setUserLine] = useState("");
 
+  // Every start gets a token; End (or a newer start) invalidates it, so a permission prompt or a session fetch that
+  // resolves after the parent pressed End can never open a live microphone.
+  const attempt = useRef(0);
+  const connectedFor = useRef(0); // the attempt number that actually connected
+
   const convo = useConversation({
-    onConnect: () => setPhase("live"),
+    onConnect: () => { connectedFor.current = attempt.current; setPhase("live"); },
     onDisconnect: () => setPhase((p) => (p === "error" ? p : "ended")),
     onError: (message: string) => {
       setProblem(message || "The voice connection failed.");
@@ -63,9 +68,6 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
   // leaving the page ends the call (the provider also ends it when it unmounts)
   useEffect(() => () => endSession(), [endSession]);
 
-  // Every start gets a token; End (or a newer start) invalidates it, so a permission prompt or a session fetch that
-  // resolves after the parent pressed End can never open a live microphone.
-  const attempt = useRef(0);
 
   async function start() {
     const mine = ++attempt.current;
@@ -92,6 +94,14 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
       if (attempt.current !== mine) return; // the parent pressed End while we were waiting
       if (!r.ok || !j.signedUrl) throw new Error(j.error ?? `HTTP ${r.status}`);
       convo.startSession({ signedUrl: j.signedUrl, connectionType: "websocket" });
+      // The SDK drops a start silently while a previous call is still closing; never sit on "Connecting" forever.
+      setTimeout(() => {
+        if (attempt.current !== mine || connectedFor.current === mine) return;
+        attempt.current++;
+        endSession();
+        setProblem("The voice agent did not connect. Press Talk to try again, or type your request.");
+        setPhase("error");
+      }, 15_000);
     } catch (e) {
       if (attempt.current !== mine) return;
       setProblem((e as Error).message);
