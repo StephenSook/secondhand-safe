@@ -1,5 +1,5 @@
 import { MissingEnvError } from "@/server/env";
-import { authorize, newDealId } from "@/server/visa/acceptance";
+import { authorize, newDealId, reverse } from "@/server/visa/acceptance";
 import { visaCreds, SANDBOX_TEST_CARD } from "@/server/visa/creds";
 import { issueDealToken } from "@/server/deals/token";
 import { verifyAgentRequest } from "@/server/tap/agent";
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   // a saved card (Visa Token Management Service) is only honored with our signature on it
   const saved = b?.savedCard !== undefined ? verifySavedCard(creds.secret, b.savedCard) : null;
   if (b?.savedCard !== undefined && !saved) return Response.json({ error: "That saved card is not valid here; enter the card again." }, { status: 400 });
-  const saveCard = b?.saveCard === true && !!tt;
+  const saveCard = b?.saveCard === true && !!tt && !saved;
   const source = saved ? { customerId: saved.customerId } : tt ? { transientTokenJwt: tt } : { card: SANDBOX_TEST_CARD };
   const cardKind = saved ? "saved-card" : tt ? "microform" : "sandbox-test-card";
   const dealId = newDealId();
@@ -65,8 +65,14 @@ export async function POST(request: Request) {
       : `Visa did not authorize: ${auth.status} ${auth.reason ?? ""}`.trim();
     return Response.json({ error, visa: { status: auth.status, httpStatus: auth.httpStatus } }, { status: 502 });
   }
-  // the hold is what Visa authorized: less than asked when a card-linked promotion applied
-  const heldUsd = auth.authorizedUsd && auth.authorizedUsd > 0 && auth.authorizedUsd <= amountUsd ? Math.round(auth.authorizedUsd * 100) / 100 : amountUsd;
+  // the hold is what Visa authorized: less than asked when a card-linked promotion applied. More than asked is
+  // never accepted: release it and refuse, rather than hold an amount the buyer did not agree to.
+  if (auth.authorizedUsd && auth.authorizedUsd > amountUsd + 0.004) {
+    const rel = await reverse(creds, auth.id, { dealId, amountUsd: auth.authorizedUsd, reason: "authorized more than the agreed price" });
+    console.warn(`[checkout] Visa authorized ${auth.authorizedUsd} for an agreed ${amountUsd}; reversal ${rel.status}`);
+    return Response.json({ error: `Visa authorized more than the agreed price; the hold was released (${rel.status}). Nothing was charged.` }, { status: 502 });
+  }
+  const heldUsd = auth.authorizedUsd && auth.authorizedUsd > 0 ? Math.round(auth.authorizedUsd * 100) / 100 : amountUsd;
   waitUntil(recordHold({ dealId, listing, amountUsd: heldUsd, card: cardKind, agent: agent?.keyid ?? null }));
   const customerId = (auth.raw as { tokenInformation?: { customer?: { id?: string } } })?.tokenInformation?.customer?.id;
   const newSaved = saveCard && customerId ? issueSavedCard(creds.secret, { customerId, masked: maskedFrom(tt!) }) : undefined;

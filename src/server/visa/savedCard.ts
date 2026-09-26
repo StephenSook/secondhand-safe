@@ -7,11 +7,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * charged through our checkout.
  */
 export interface SavedCard { customerId: string; masked: string; iat: number }
-const TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const TTL_MS = 7 * 24 * 60 * 60 * 1000; // a bearer token with no accounts behind it: keep its life short
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 const mac = (secret: string, body: string) => createHmac("sha256", `lullabuy-saved-card:${secret}`).update(body).digest();
 
 export function issueSavedCard(secret: string, c: Omit<SavedCard, "iat">, now = Date.now()): string {
+  if (!/^[0-9A-F]{16,40}$/i.test(c.customerId)) throw new Error("not a Visa customer token id");
   const body = b64u(JSON.stringify({ customerId: c.customerId, masked: c.masked.slice(-8), iat: now }));
   return `${body}.${b64u(mac(secret, body))}`;
 }

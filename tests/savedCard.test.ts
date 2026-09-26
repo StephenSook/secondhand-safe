@@ -15,6 +15,6 @@ describe("saved card (Visa TMS customer token, signed by us)", () => {
     expect(verifySavedCard(Buffer.from("other").toString("base64"), t)).toBeNull();
     expect(verifySavedCard(secret, "5C65F191C5AC936DE063A2598D0A6909")).toBeNull();
     expect(verifySavedCard(secret, { customerId: "x" })).toBeNull();
-    expect(verifySavedCard(secret, t, Date.now() + 31 * 24 * 3600 * 1000)).toBeNull();
+    expect(verifySavedCard(secret, t, Date.now() + 8 * 24 * 3600 * 1000)).toBeNull();
   });
 });

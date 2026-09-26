@@ -24,6 +24,16 @@ type Deal = {
 };
 const DEAL_KEY = "shs-deal";
 const SAVED_KEY = "lullabuy-saved-card";
+/** A saved-card entry from localStorage, or null if missing, corrupt or the wrong shape. */
+function parseSaved(raw: string | null): { token: string; masked: string } | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as { token?: unknown; masked?: unknown };
+    return typeof v?.token === "string" && typeof v?.masked === "string" ? { token: v.token, masked: v.masked } : null;
+  } catch {
+    return null;
+  }
+}
 const LISTINGS = DEMO_TABLE;
 const CLASS_NAME: Record<string, string> = {
   inclined_or_inbed_sleeper: "infant sleeper", crib_bumper: "crib bumper", drop_side_crib: "drop-side crib", other: "no banned type",
@@ -81,8 +91,8 @@ export function PickupScanner() {
     try {
       const savedDeal = sessionStorage.getItem(DEAL_KEY);
       if (savedDeal) window.setTimeout(() => setDeal(JSON.parse(savedDeal) as Deal), 0);
-      const savedCardJson = localStorage.getItem(SAVED_KEY);
-      if (savedCardJson) window.setTimeout(() => setSaved(JSON.parse(savedCardJson)), 0);
+      const parsed = parseSaved(localStorage.getItem(SAVED_KEY));
+      if (parsed) window.setTimeout(() => setSaved(parsed), 0);
     } catch {}
   }, []);
 
@@ -136,8 +146,12 @@ export function PickupScanner() {
       }
       if (j.savedCard) {
         const next = { token: j.savedCard as string, masked: String(j.savedMasked ?? "card") };
-        try { localStorage.setItem(SAVED_KEY, JSON.stringify(next)); } catch {}
-        setSaved(next);
+        try {
+          localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+          setSaved(next);
+        } catch {
+          setDealErr("Held. Visa saved the card, but this browser blocks storage, so it cannot be offered next time.");
+        }
       }
       saveDeal({ dealId: j.dealId, listing: j.listing, amountUsd: j.amountUsd, token: j.token, authId: j.visa.authId, status: "HELD", at: j.at, card: j.card,
         promotion: j.promotion, askedUsd: j.askedUsd });
