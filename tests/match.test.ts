@@ -139,7 +139,7 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
       const v = checkLabel({ upc });
       expect(v.kind, upc).toBe("NEEDS_CHECK");
       expect(v.recall?.recallNumber).toBe("11220");
-      expect(v.reason).toMatch(/printed without one digit/);
+      expect(v.reason).toMatch(/printed with digits missing/);
     }
     expect(checkLabel({ upc: "066264914743" }).kind).toBe("NEEDS_CHECK"); // CPSC 12017 lists 06626491474
   });
@@ -147,10 +147,22 @@ describe("UPC matching is by GTIN, whatever the zero padding a scanner sends", (
     const alone = checkLabel({ upc: "066264914740" });
     expect(alone.kind).toBe("UNREADABLE");
     expect(alone.reason).toMatch(/not a valid barcode/);
+    // a clean model does not rescue a misread barcode: nothing is decided, the hold stays
     const withModel = checkLabel({ upc: "066264914740", model: "ZZT9Q41X" });
-    expect(withModel.kind).toBe("NO_MATCH"); // decided on the model, and it says the UPC was not used
-    expect(withModel.reason).toMatch(/UPC 066264914740 is not a valid barcode/);
-    expect(checkLabel({ upc: "066264914740", model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH");
+    expect(withModel.kind).toBe("NEEDS_CHECK");
+    expect(withModel.reason).toMatch(/barcode did not read correctly/);
+    expect(checkLabel({ upc: "066264914740", model: "BHC001", batch: "202408" }).kind).toBe("RECALL_MATCH"); // positive evidence stands
+    expect(checkLabel({ upc: "066264914740", model: "BHC001" }).kind).toBe("NEEDS_CHECK");
+  });
+  it("a GTIN-14 case code (indicator 1-8) of a recalled item matches the item's recall (10669028116543 for 26530)", () => {
+    const v = checkLabel({ upc: "10669028116543" });
+    expect(v.kind).toBe("RECALL_MATCH");
+    expect(v.recall?.recallNumber).toBe("26530");
+  });
+  it("a scanned code containing an incomplete 10-digit recall UPC keeps the hold (060258358834, recall 14257 lists 60258-35883)", () => {
+    const v = checkLabel({ upc: "060258358834" });
+    expect(v.kind).toBe("NEEDS_CHECK");
+    expect(v.recall?.recallNumber).toBe("14257");
   });
   it("a clean UPC with no recall is NO_MATCH (the e2e capture UPC)", () => {
     expect(checkLabel({ upc: "012345678905" }).kind).toBe("NO_MATCH");

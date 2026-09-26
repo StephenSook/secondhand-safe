@@ -29,10 +29,13 @@ const MAX_STRAY = 2;
 /** GS1 mod-10 check digit: weights 3 and 1 alternating from the digit next to the check digit. */
 export function gtinValid(code: string): boolean {
   if (!/^\d+$/.test(code) || !GTIN_LENGTHS.has(code.length)) return false;
-  const digits = code.split("").map(Number);
-  const check = digits.pop()!;
-  const sum = digits.reverse().reduce((s, d, i) => s + d * (i % 2 === 0 ? 3 : 1), 0);
-  return (10 - (sum % 10)) % 10 === check;
+  return gtinCheckDigit(code.slice(0, -1)) === Number(code.at(-1));
+}
+
+/** The GS1 check digit for a GTIN body (every digit but the check digit). */
+export function gtinCheckDigit(body: string): number {
+  const sum = body.split("").map(Number).reverse().reduce((s, d, i) => s + d * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10;
 }
 
 /** Digits only, then a valid GTIN or a reason. The rule a typed or pasted value goes through. */
