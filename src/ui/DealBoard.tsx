@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LIVE_LABEL, useLiveRefresh } from "./useLiveRefresh";
 
-/** The deal board for the expo screen: every hold and how it ended, read from MongoDB Atlas every 3 seconds. */
+/** The deal board for the expo screen: every hold and how it ended, re-read from MongoDB Atlas when its change
+ *  stream reports a deal change, or every 3 seconds when the stream is not available. */
 type Row = { dealId: string; listing: string; amountUsd: number; status: string; updatedAt: string; verdict?: { kind: string } };
 type Board = { recent: Row[]; byStatus: Record<string, { n: number; usd: number }> };
 const CHIP: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green text-paper", REVERSED: "bg-red text-paper", REFUSED: "bg-sand", UNKNOWN: "bg-sand", RELEASED: "bg-aqua", LAPSED: "bg-sand" };
@@ -11,21 +13,20 @@ const CHIP: Record<string, string> = { HELD: "bg-amber", CAPTURED: "bg-green tex
 export function DealBoard() {
   const [b, setB] = useState<Board | null>(null);
   const [err, setErr] = useState("");
-  useEffect(() => {
-    let live = true;
-    const load = async () => {
-      try {
-        const r = await fetch("/api/deals", { cache: "no-store" });
-        const j = await r.json();
-        if (!live) return;
-        if (!r.ok) { setErr(j.error ?? `HTTP ${r.status}`); return; }
-        setErr(""); setB(j);
-      } catch { if (live) setErr("Could not reach the deal store; retrying."); }
-    };
-    void load();
-    const t = window.setInterval(load, 3000);
-    return () => { live = false; window.clearInterval(t); };
+  const alive = useRef(true);
+  const seq = useRef(0);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const load = useCallback(async () => {
+    const n = ++seq.current;
+    try {
+      const r = await fetch("/api/deals", { cache: "no-store" });
+      const j = await r.json();
+      if (!alive.current || n !== seq.current) return; // a newer read has started: never show an older answer over it
+      if (!r.ok) { setErr(j.error ?? `HTTP ${r.status}`); return; }
+      setErr(""); setB(j);
+    } catch { if (alive.current && n === seq.current) setErr("Could not reach the deal store; retrying."); }
   }, []);
+  const mode = useLiveRefresh("/api/stream", load);
   if (!b) return <p className="hand text-3xl mt-6">{err || "loading the board…"}</p>;
   const s = (k: string) => b.byStatus[k] ?? { n: 0, usd: 0 };
   return (
@@ -48,7 +49,7 @@ export function DealBoard() {
           </li>
         ))}
       </ul>
-      <p className="text-xs font-semibold text-ink/60">Visa sandbox transactions, recorded in MongoDB Atlas as they happen. Visa is the record of the money; this board mirrors it.</p>
+      <p className="text-xs font-semibold text-ink/60"><span data-testid="live-mode" className="font-extrabold">{LIVE_LABEL[mode]}</span> · Visa sandbox transactions, recorded in MongoDB Atlas as they happen. Visa is the record of the money; this board mirrors it.</p>
     </div>
   );
 }

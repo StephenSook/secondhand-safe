@@ -94,7 +94,21 @@ export type PublicDeal = Omit<DealRecord, "_id" | "authId"> & { dealId: string }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const pub = (d: DealRecord): PublicDeal => { const { _id, authId, ...rest } = d; return { dealId: _id, ...rest }; };
 
-export type DealLookup = { state: "ok"; deal: PublicDeal } | { state: "missing" } | { state: "unavailable" };
+/** What the PUBLIC board and its change stream show for one deal: an explicit allowlist (never authId, never
+ *  sweepAttemptAt, never a field added later by accident), and only listing text we wrote (catalog titles,
+ *  demo-table items) verbatim; anything else a buyer typed becomes "A listing". */
+export type BoardDeal = Pick<PublicDeal, "dealId" | "listing" | "amountUsd" | "status" | "card" | "agent" | "createdAt" | "updatedAt" | "events" | "verdict" | "passportPath">;
+export function boardDeal(d: DealRecord): BoardDeal {
+  const out: BoardDeal = {
+    dealId: d._id, listing: KNOWN_TITLES.has(d.listing) ? d.listing : "A listing", amountUsd: d.amountUsd, status: d.status,
+    card: d.card, agent: d.agent, createdAt: d.createdAt, updatedAt: d.updatedAt, events: d.events,
+  };
+  if (d.verdict !== undefined) out.verdict = d.verdict;
+  if (d.passportPath !== undefined) out.passportPath = d.passportPath;
+  return out;
+}
+
+export type DealLookup ={ state: "ok"; deal: PublicDeal } | { state: "missing" } | { state: "unavailable" };
 
 export async function getDeal(dealId: string): Promise<DealLookup> {
   const r = await safely<DealLookup>("getDeal", async () => {
@@ -111,9 +125,8 @@ export async function board(limit = 20) {
   return safely("board", async () => {
     const c = await deals();
     if (!c) return null;
-    // the board is public: only listing text we wrote (catalog titles, demo-table items) is shown verbatim
-    const recent = (await c.find({}, { sort: { updatedAt: -1 }, limit }).toArray()).map(pub)
-      .map((d) => ({ ...d, listing: KNOWN_TITLES.has(d.listing) ? d.listing : "A listing" }));
+    // the board is public: boardDeal allowlists fields and sanitizes listing text (the change stream uses it too)
+    const recent = (await c.find({}, { sort: { updatedAt: -1 }, limit }).toArray()).map(boardDeal);
     const byStatus = Object.fromEntries((await c.aggregate<{ _id: string; n: number; usd: number }>([
       { $group: { _id: "$status", n: { $sum: 1 }, usd: { $sum: "$amountUsd" } } }]).toArray()).map((g) => [g._id, { n: g.n, usd: Math.round(g.usd * 100) / 100 }]));
     return { recent, byStatus };
