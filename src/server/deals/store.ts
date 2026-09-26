@@ -19,6 +19,8 @@ export interface DealRecord {
   listing: string; amountUsd: number; status: RecordStatus; card: string | null; agent: string | null;
   /** Visa authorization id, kept server-side so the sweeper can release an abandoned hold; never public. */
   authId?: string | null;
+  /** when the sweeper last tried and Visa did not confirm (the deal stays HELD) */
+  sweepAttemptAt?: string;
   createdAt: string; updatedAt: string; events: DealEvent[];
   verdict?: { kind: string; reason: string; recall?: string | null };
   passportPath?: string | null;
@@ -64,7 +66,8 @@ export function recordSettlement(dealId: string, s: { status: DealStatus; verdic
       : s.status === "HELD" ? "Needs a check: the hold stays, no money moved"
       : s.status === "REFUSED" ? "Visa refused the settlement (already settled or not open)" : "Visa did not confirm";
     // an already-final deal keeps its final status, reason and passport; a later scan is appended to the timeline only
-    const final = { $in: ["$status", ["CAPTURED", "REVERSED"]] };
+    // RELEASED and LAPSED (hold sweeper) are final too: a late scan can never re-open a released hold
+    const final = { $in: ["$status", ["CAPTURED", "REVERSED", "RELEASED", "LAPSED"]] };
     const update = () => c.updateOne({ _id: dealId }, [{ $set: {
       status: { $cond: [final, "$status", s.status] },
       verdict: { $cond: [final, "$verdict", { $literal: s.verdict }] },
@@ -122,8 +125,19 @@ export function heldBefore(cutoffIso: string, limit = 25) {
   return safely("heldBefore", async () => {
     const c = await deals();
     if (!c) return null;
-    return c.find({ status: "HELD", createdAt: { $lt: cutoffIso } }, { projection: { _id: 1, amountUsd: 1, createdAt: 1, authId: 1 }, sort: { createdAt: 1 }, limit }).toArray();
+    // never-attempted deals first, so holds Visa keeps not answering for can never block newer ones
+    return c.find({ status: "HELD", createdAt: { $lt: cutoffIso } }, { projection: { _id: 1, amountUsd: 1, createdAt: 1, authId: 1 }, sort: { sweepAttemptAt: 1, createdAt: 1 }, limit }).toArray();
   }, 6000);
+}
+
+/** A release Visa did not confirm: the deal stays HELD, stamped so the next run tries other deals first. */
+export function recordSweepAttempt(dealId: string) {
+  return safely("recordSweepAttempt", async () => {
+    const c = await deals();
+    if (!c) return false;
+    const r = await c.updateOne({ _id: dealId, status: "HELD" }, { $set: { sweepAttemptAt: new Date().toISOString() } });
+    return r.modifiedCount === 1;
+  });
 }
 
 /** Records a sweep result, only if the deal is STILL held (a pickup that settled meanwhile always wins). */

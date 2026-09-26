@@ -7,7 +7,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  */
 export interface DealClaims { dealId: string; authId: string; amountUsd: number; iat: number }
 
-const TTL_MS = 12 * 60 * 60 * 1000;
+export const TTL_MS = 12 * 60 * 60 * 1000;
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 
 /** Signing key first; the derived key is also accepted so setting DEAL_TOKEN_SECRET never orphans open holds. */

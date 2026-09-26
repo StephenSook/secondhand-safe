@@ -1,4 +1,5 @@
 import { reverse, type VisaCreds, type VisaResult } from "@/server/visa/acceptance";
+import { TTL_MS } from "@/server/deals/token";
 
 /**
  * Hold sweeper (PLAN 5.4): a pickup that never happens must not leave a parent's money held. Once a day
@@ -10,7 +11,9 @@ import { reverse, type VisaCreds, type VisaResult } from "@/server/visa/acceptan
  * (it is retried on the next run) or marks it REFUSED when Visa said the hold is no longer open.
  */
 const envHours = Number(process.env.HOLD_WINDOW_HOURS);
-export const HOLD_WINDOW_HOURS = Number.isFinite(envHours) && envHours > 0 ? envHours : 24;
+// Never shorter than the pickup token's life (+1 h): a hold the buyer can still settle is never swept.
+const MIN_HOURS = TTL_MS / 3_600_000 + 1;
+export const HOLD_WINDOW_HOURS = Math.max(Number.isFinite(envHours) && envHours > 0 ? envHours : 24, MIN_HOURS);
 
 export interface HeldDeal { _id: string; amountUsd: number; createdAt: string; authId?: string | null }
 export type SweepAction = { dealId: string; amountUsd: number } & ({ action: "reverse"; authId: string } | { action: "lapse" });
@@ -33,15 +36,20 @@ export function sweepOutcome(dealId: string, r: VisaResult): SweepOutcome {
   return { dealId, status: "UNKNOWN", note: "Visa did not confirm the release; the deal stays held and is retried on the next sweep" };
 }
 
-export async function runSweep(creds: VisaCreds, plan: SweepAction[], f?: typeof fetch): Promise<SweepOutcome[]> {
+/**
+ * Runs the plan one deal at a time and hands each outcome to `record` IMMEDIATELY, so a function timeout never
+ * leaves a reversal Visa applied without its record. Stops starting new reversals at `deadline` (epoch ms);
+ * the rest wait for the next run.
+ */
+export async function runSweep(creds: VisaCreds, plan: SweepAction[], opts: { record?: (o: SweepOutcome) => Promise<unknown>; deadline?: number; f?: typeof fetch } = {}): Promise<SweepOutcome[]> {
   const out: SweepOutcome[] = [];
   for (const a of plan) {
-    if (a.action === "lapse") {
-      out.push({ dealId: a.dealId, status: "LAPSED", note: "Recorded before deals stored their Visa authorization id; an uncaptured authorization expires at Visa on its own, nothing was charged" });
-      continue;
-    }
-    const r = await reverse(creds, a.authId, { dealId: a.dealId, amountUsd: a.amountUsd, reason: "pickup never happened" }, f);
-    out.push(sweepOutcome(a.dealId, r));
+    if (opts.deadline && Date.now() > opts.deadline) break;
+    const o: SweepOutcome = a.action === "lapse"
+      ? { dealId: a.dealId, status: "LAPSED", note: "Recorded before deals stored their Visa authorization id; an uncaptured authorization expires at Visa on its own, nothing was charged" }
+      : sweepOutcome(a.dealId, await reverse(creds, a.authId, { dealId: a.dealId, amountUsd: a.amountUsd, reason: "pickup never happened" }, opts.f));
+    if (opts.record) await opts.record(o);
+    out.push(o);
   }
   return out;
 }
