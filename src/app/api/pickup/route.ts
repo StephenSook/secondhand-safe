@@ -51,7 +51,8 @@ export async function POST(request: Request) {
   }
   waitUntil(recordSettlement(deal.dealId, { status: out.status,
     verdict: { kind: verdict.kind, reason: verdict.reason, recall: verdict.recall?.recallNumber ?? null },
-    passportPath: passport && "path" in passport ? passport.path : null }));
+    passportPath: passport && "path" in passport ? passport.path : null,
+    label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null } }));
   return Response.json({
     dealId: deal.dealId, amountUsd: deal.amountUsd, status: out.status, verdict, ...(passport ? { passport } : {}),
     visa: out.visa ? { id: out.visa.id, status: out.visa.status, httpStatus: out.visa.httpStatus, reason: out.visa.reason, authId: deal.authId } : { authId: deal.authId },
