@@ -75,7 +75,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   async function run(query = q): Promise<ShopResponse | null> {
     const text = query.trim();
     if (!text) return null;
-    setQ(text); setBusy(true); setErr(""); setHeld(null); setProposed("");
+    // A real Visa hold stays on screen through later searches (a voice search can run any time); only a failed
+    // attempt's message is cleared.
+    setQ(text); setBusy(true); setErr(""); setHeld((h) => (h?.ok ? h : null)); setProposed("");
     try {
       const r = await fetch("/api/shop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ q: text }) });
       const j = (await r.json()) as ShopResponse;
@@ -199,6 +201,12 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
               </div>
             )}
           </div>
+          {held?.ok && !res.results.some((r) => r.listing.id === held.id) && (
+            <div role="status" className="rounded-xl border-2 border-ink bg-amber p-3 font-bold">
+              {held.text}
+              <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>
+            </div>
+          )}
           {res.results.length === 0 && <p className="hand text-3xl">Nothing matched. Try fewer words or a higher budget.</p>}
           <ul className="grid gap-4 md:grid-cols-2">
             {res.results.map((r) => {

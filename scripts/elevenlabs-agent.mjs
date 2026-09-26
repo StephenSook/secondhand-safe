@@ -20,7 +20,9 @@ const SEARCH_URL = "https://lullabuy.tech/api/voice-agent/search";
 // and /api/voice already speaks Spanish with it.
 const VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const TTS_MODEL = "eleven_flash_v2_5";
-const ALLOWED_HOSTS = ["lullabuy.tech", "www.lullabuy.tech", "secondhand-safe-web.vercel.app", "localhost"];
+const ALLOWED_HOSTS = ["lullabuy.tech", "www.lullabuy.tech", "secondhand-safe-web.vercel.app"];
+// A conversation ends itself after this, so an abandoned tab (or a scripted client) cannot burn the plan's minutes.
+const MAX_CALL_SECONDS = 180;
 
 const PROMPT = `You are Lullabuy, a voice shopping helper for parents buying used baby gear (bassinets, cribs, car seats,
 strollers, sleepers) on secondhand marketplaces, mostly around Atlanta.
@@ -121,6 +123,7 @@ const agentBody = (toolIds) => ({
       },
     },
     tts: { model_id: TTS_MODEL, voice_id: VOICE_ID },
+    conversation: { max_duration_seconds: MAX_CALL_SECONDS },
     language_presets: {
       es: { overrides: { agent: { language: "es", first_message: FIRST_MESSAGE_ES } } },
     },
@@ -140,8 +143,11 @@ async function call(key, method, path, body) {
   });
   const text = await res.text();
   if (!res.ok) {
-    // the response body is ElevenLabs' error message; it never contains our key or secret
-    throw new Error(`${method} ${path} -> HTTP ${res.status}: ${text.slice(0, 300)}`);
+    // A validation error can echo the request (including a secret's value), so scrub our secrets from the body,
+    // and never print the body of a failed call to the secrets endpoint at all.
+    let detail = path.startsWith("/v1/convai/secrets") ? "(body withheld: secrets endpoint)" : text.slice(0, 300);
+    for (const s of [key, process.env.ELEVENLABS_TOOL_SECRET?.trim()].filter(Boolean)) detail = detail.split(s).join(REDACTED);
+    throw new Error(`${method} ${path} -> HTTP ${res.status}: ${detail}`);
   }
   return text ? JSON.parse(text) : {};
 }
