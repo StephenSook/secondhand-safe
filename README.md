@@ -66,6 +66,8 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
    so the card number never reaches our server). The transient token is authorized with capture off. An AI
    agent buying for a parent signs its request with the **Trusted Agent Protocol** (RFC 9421, Ed25519),
    and an edited amount or a replayed request is refused before Visa is called.
+   A buyer can save the card with Visa's **Token Management Service** and pay the next hold without
+   re-entering it; when Visa applies a card-linked offer, the hold is the discounted amount.
 2. **Meet and scan.** `/pickup`: one photo; `BarcodeDetector` reads the UPC where the browser supports it,
    Gemini returns only the values printed on the label with their boxes, and a CLIP ViT-B/32 embedding plus
    our trained head classifies the product type in the browser (transformers.js).

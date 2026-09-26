@@ -41,6 +41,12 @@ TODO (Stephen): one or two sentences on why this one matters to you.
   only settle the hold it was issued for. Replaying a settlement is refused by Visa and shown as refused.
 - **Visa Acceptance Microform:** the card number and CVV are typed into Visa-hosted fields and come back as a
   one-time token, so the card never reaches our server. Verified end to end in a browser against the sandbox.
+- **Visa Token Management Service and card-linked offers:** a buyer can save the card with Visa and pay the next
+  hold without typing it again; the browser keeps only our signed wrapper around Visa's token. Testing it, we
+  found that when Visa applies a card-linked offer ("20 percent off" a card's 10th purchase), the reply carries
+  a lower authorized amount and no status field. We hold exactly what Visa authorized and show the saving.
+- **Mobile app:** the same product on iOS and Android (Expo): shop, scan a label with the camera, and the deal
+  board, all on the live API.
 - **Trusted Agent Protocol:** an AI agent buying for a parent signs its checkout with RFC 9421 HTTP Message
   Signatures (Ed25519), covering the method, host, path and a digest of the body. Our merchant checks the
   signature, the time window and a one-time nonce before calling Visa. On `/pickup` you can send a request
