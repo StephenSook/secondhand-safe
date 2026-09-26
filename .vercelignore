@@ -9,7 +9,8 @@ ml/*.csv
 ml/requirements*.txt
 data/*.py
 data/__pycache__
-docs
+docs/*
+!docs/FACTS.json
 tests
 scripts
 test-results
