@@ -103,28 +103,30 @@ function recallVerdict(entry: Entry, field: "model" | "upc", value: string, batc
 
 const pick = (entries: Entry[]) => [...entries].sort((a, b) => b.recall.recallDate.localeCompare(a.recall.recallDate))[0];
 
-export function checkLabel(input: LabelInput): Verdict {
-  const text = (input.text ?? "").toLowerCase();
+function recallLookup(input: LabelInput): Verdict | undefined {
   if (input.upc) {
     const hit = byUpc.get(input.upc.replace(/\D/g, ""));
     if (hit) return recallVerdict(pick(hit), "upc", input.upc, input.batch, input.date);
   }
   if (input.model && fold(input.model).length >= MIN_MODEL_LEN && !isJunkId(input.model)) {
     const hit = byModel.get(fold(input.model));
-    if (hit) {
-      // A short all-digit model number ("4340") is shared across brands, and brand names are often ordinary words
-      // ("Summer", "Gap", "Place") that listing text mentions anyway. So it never moves money on its own: the hold
-      // waits for a person to confirm the brand on the label.
-      if (/^\d{4,6}$/.test(fold(input.model))) {
-        const e = pick(hit);
-        const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";
-        return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "model", value: input.model, recallValue: e.value }, asOf: INDEX_AS_OF,
-          reason: `Model ${e.value} appears in ${e.recall.source} recall ${e.recall.recallNumber} (${brands}). A number this short is shared across brands: confirm the brand on the label before any money moves.` };
-      }
-      return recallVerdict(pick(hit), "model", input.model, input.batch, input.date);
+    if (!hit) return undefined;
+    // A short all-digit model number ("4340") is shared across brands, and brand names are often ordinary words
+    // ("Summer", "Gap", "Place") that listing text mentions anyway. So it never moves money on its own: the hold
+    // waits for a person to confirm the brand on the label. Tested on the label as printed, not the OCR fold,
+    // so "L524" (a letter model) is not treated as a bare number.
+    if (/^\d{4,6}$/.test(input.model.replace(/[^A-Za-z0-9]/g, ""))) {
+      const e = pick(hit);
+      const brands = [...new Set(hit.flatMap((x) => x.recall.brands))].slice(0, 3).join(", ") || "the recalled brand";
+      return { kind: "NEEDS_CHECK", recall: e.recall, matched: { field: "model", value: input.model, recallValue: e.value }, asOf: INDEX_AS_OF,
+        reason: `Model ${e.value} appears in ${e.recall.source} recall ${e.recall.recallNumber} (${brands}). A number this short is shared across brands: confirm the brand on the label before any money moves.` };
     }
+    return recallVerdict(pick(hit), "model", input.model, input.batch, input.date);
   }
-  const c = input.cls && input.cls.p >= CLASS_MIN_P ? input.cls.cls : undefined;
+  return undefined;
+}
+
+function classVerdict(c: ProductClass | undefined, text: string): Verdict | undefined {
   if (c === "crib_bumper") {
     if (/mesh/.test(text)) {
       return { kind: "NEEDS_CHECK", asOf: INDEX_AS_OF,
@@ -145,6 +147,19 @@ export function checkLabel(input: LabelInput): Verdict {
     return { kind: "NEEDS_CHECK", asOf: INDEX_AS_OF,
       reason: "Looks like an infant sleeper. Inclined sleepers are banned; an in-bed sleeper must meet the bassinet standard. Check the type and the label." };
   }
+  return undefined;
+}
+
+/** Order: a confirmed recall match, then a banned type (so an uncertain recall hit never hides a ban), then an
+ *  uncertain recall hit, then the classifier's own checks. */
+export function checkLabel(input: LabelInput): Verdict {
+  const text = (input.text ?? "").toLowerCase();
+  const recalled = recallLookup(input);
+  if (recalled?.kind === "RECALL_MATCH") return recalled;
+  const byClass = classVerdict(input.cls && input.cls.p >= CLASS_MIN_P ? input.cls.cls : undefined, text);
+  if (byClass?.kind === "BANNED_TYPE") return byClass;
+  if (recalled) return recalled;
+  if (byClass) return byClass;
   const read = !!(input.model?.trim() || input.upc?.trim());
   if (!read) {
     return { kind: "UNREADABLE", asOf: INDEX_AS_OF,
