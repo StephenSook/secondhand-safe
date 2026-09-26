@@ -3,7 +3,7 @@
  * A field it cannot read is omitted, and "readable" is false when neither a model number nor a UPC is legible.
  * Never a guess: every value is also required to be short, printable and label-shaped.
  */
-export const LABEL_MODEL = "gemini-3.8-flash";
+export const LABEL_MODEL = "gemini-3.5-flash"; // 3.8-flash measured >120 s per call; 3.5-flash ~3 s
 
 export interface LabelBox { field: "brand" | "model" | "batch" | "date" | "upc"; x: number; y: number; w: number; h: number }
 export interface LabelRead {
@@ -37,11 +37,18 @@ const clean = (v: unknown, max = 40) => {
 
 export async function readLabel(base64: string, mime: string, key: string, fetchImpl: typeof fetch = fetch): Promise<LabelRead> {
   const t0 = Date.now();
-  const res = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${LABEL_MODEL}:generateContent`, {
+  // key: an AI Studio API key, or "vertex:<project>:<access token>" for Vertex AI on a project whose billing
+  // account carries the Gemini credits (used for local verification with `gcloud auth print-access-token`)
+  const vertex = key.startsWith("vertex:") ? key.split(":") : null;
+  const url = vertex
+    ? `https://aiplatform.googleapis.com/v1/projects/${vertex[1]}/locations/global/publishers/google/models/${LABEL_MODEL}:generateContent`
+    : `https://generativelanguage.googleapis.com/v1beta/models/${LABEL_MODEL}:generateContent`;
+  const auth: Record<string, string> = vertex ? { authorization: `Bearer ${vertex.slice(2).join(":")}` } : { "x-goog-api-key": key };
+  const res = await fetchImpl(url, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": key },
+    headers: { "content-type": "application/json", ...auth },
     body: JSON.stringify({
-      contents: [{ parts: [{ inline_data: { mime_type: mime, data: base64 } }, { text: PROMPT }] }],
+      contents: [{ role: "user", parts: [{ inline_data: { mime_type: mime, data: base64 } }, { text: PROMPT }] }],
       generationConfig: {
         temperature: 0,
         responseMimeType: "application/json",

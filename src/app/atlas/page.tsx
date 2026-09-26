@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Nav } from "@/ui/Nav";
 import { Atlas } from "@/ui/Atlas";
+import { BRAND } from "@/core/brand";
 
-export const metadata: Metadata = { title: "The model's view: SecondHand Safe" };
+export const metadata: Metadata = { title: `The model's view: ${BRAND}` };
 
 export default function AtlasPage() {
   return (

@@ -1,8 +1,10 @@
-# SecondHand Safe
+# Lullabuy
+
+*(repo name: secondhand-safe)* · **lullabuy.tech**
 
 **The money doesn't move until the camera has seen the item.**
 
-Buying a used crib, bassinet or car seat from a stranger? SecondHand Safe holds the buyer's Visa payment
+Buying a used crib, bassinet or car seat from a stranger? Lullabuy holds the buyer's Visa payment
 when the deal is agreed. At pickup, one photo of the product label is read (barcode on the phone, label
 text by Gemini, product type by our own model running in the browser) and checked against every CPSC
 nursery and children's recall, NHTSA's child car seat recalls, plus the product types that are banned outright. Clean: the hold is

@@ -5,8 +5,9 @@ import { Nav } from "@/ui/Nav";
 import { INDEX_SIZE, INDEX_AS_OF } from "@/server/recalls/match";
 import { integrationStatus } from "@/server/env";
 import { CopyLine } from "@/ui/CopyLine";
+import { BRAND } from "@/core/brand";
 
-export const metadata: Metadata = { title: "Judges: SecondHand Safe in 3 minutes" };
+export const metadata: Metadata = { title: `Judges: ${BRAND} in 3 minutes` };
 
 const LIVE_LABEL: Record<string, string> = {
   visa: "Visa Acceptance sandbox (authorize, capture, reverse)",

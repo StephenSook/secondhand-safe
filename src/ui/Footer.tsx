@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { setupGsap, useGSAP, gsap } from "./motion/gsap";
 import { Mark } from "./Mark";
+import { BRAND, DOMAIN } from "@/core/brand";
 import { SquashButton } from "./SquashButton";
 
 /** Footer slides out from under the section above while the tag swings in (reference: footer parallax). */
@@ -39,7 +40,7 @@ export function Footer() {
           </div>
         </div>
         <div className="ft-row mt-16 pt-8 border-t border-paper/20 flex flex-wrap items-center justify-between gap-6 text-sm font-semibold text-paper/70">
-          <div className="flex items-center gap-3"><Mark size={36} /><span>SecondHand Safe · HackGT 13 · Stephen Sookra and Tylin</span></div>
+          <div className="flex items-center gap-3"><Mark size={36} /><span>{BRAND} ({DOMAIN}) · HackGT 13 · Stephen Sookra and Tylin</span></div>
           <p>
             {/* Wired-or-cut: name an integration here only once it is live on this deployment. */}
             Recall data: <a className="underline" href="https://www.saferproducts.gov/" target="_blank" rel="noreferrer">CPSC recall API</a>
