@@ -89,20 +89,23 @@ function VoicePanel({ shop }: { shop: RefObject<ShopHandle | null> }) {
       return;
     }
     setPhase("starting");
+    // ONE deadline covering the signed-URL request AND the connection: a stalled server or a start the SDK
+    // silently dropped can never leave the panel on Connecting.
+    const ctl = new AbortController();
+    setTimeout(() => {
+      if (attempt.current !== mine || connectedFor.current === mine) return;
+      attempt.current++;
+      ctl.abort();
+      endSession();
+      setProblem("The voice agent did not connect. Press Talk to try again, or type your request.");
+      setPhase("error");
+    }, 20_000);
     try {
-      const r = await fetch("/api/voice-agent/session", { cache: "no-store" });
+      const r = await fetch("/api/voice-agent/session", { cache: "no-store", signal: ctl.signal });
       const j = (await r.json().catch(() => ({}))) as { signedUrl?: string; error?: string };
       if (attempt.current !== mine) return; // the parent pressed End while we were waiting
       if (!r.ok || !j.signedUrl) throw new Error(j.error ?? `HTTP ${r.status}`);
       convo.startSession({ signedUrl: j.signedUrl, connectionType: "websocket" });
-      // The SDK drops a start silently while a previous call is still closing; never sit on "Connecting" forever.
-      setTimeout(() => {
-        if (attempt.current !== mine || connectedFor.current === mine) return;
-        attempt.current++;
-        endSession();
-        setProblem("The voice agent did not connect. Press Talk to try again, or type your request.");
-        setPhase("error");
-      }, 15_000);
     } catch (e) {
       if (attempt.current !== mine) return;
       setProblem((e as Error).message);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import Link from "next/link";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
@@ -43,6 +43,22 @@ const speechCtor = (): (new () => SR) | null => {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 };
 
+/** An unsettled hold this browser already carries (HELD, or UNKNOWN: Visa may still hold it). Never overwritten. */
+const DEAL_KEY = "shs-deal";
+const readDeal = () => { try { return sessionStorage.getItem(DEAL_KEY); } catch { return null; } };
+const noSubscribe = () => () => {};
+function openHold(raw: string | null = readDeal()): Held | null {
+  try {
+    const d = JSON.parse(raw ?? "null") as
+      { dealId?: string; listing?: string; listingId?: string; amountUsd?: number; status?: string } | null;
+    if (!d?.dealId || (d.status !== "HELD" && d.status !== "UNKNOWN")) return null;
+    return { id: d.listingId ?? "", handoff: true,
+      text: `You already have an open hold: $${(d.amountUsd ?? 0).toFixed(2)} for ${d.listing ?? "a listing"}. Finish it at pickup before holding another.` };
+  } catch {
+    return null;
+  }
+}
+
 export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,6 +73,10 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   const [voiceMsg, setVoiceMsg] = useState("");
   const [proposed, setProposed] = useState("");
   const resRef = useRef<ShopResponse | null>(null);
+  // a reload must not forget a hold that is still open at Visa (one open hold at a time); read without an effect
+  const storedDeal = useSyncExternalStore(noSubscribe, readDeal, () => null);
+  const restored = useMemo(() => openHold(storedDeal), [storedDeal]);
+  const shownHeld = held ?? restored;
 
   /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
   async function speakSummary(r: ShopResponse, lang: "en" | "es") {
@@ -132,6 +152,8 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
 
   async function buy(r: Result) {
     const l = r.listing;
+    const existing = openHold();
+    if (existing) { setHeld(existing); setFailed({ id: l.id, text: existing.text }); return; }
     setBuying(l.id); setFailed(null);
     try {
       const resp = await fetch("/api/agent/checkout", { method: "POST", headers: { "content-type": "application/json" },
@@ -141,7 +163,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
       if (!resp.ok || m.status !== "HELD") throw new Error(m.error ?? j.error ?? `HTTP ${resp.status}`);
       let handoff = true;
       try {
-        sessionStorage.setItem("shs-deal", JSON.stringify({ dealId: m.dealId, listing: m.listing, amountUsd: m.amountUsd, token: m.token,
+        sessionStorage.setItem("shs-deal", JSON.stringify({ dealId: m.dealId, listingId: l.id, listing: m.listing, amountUsd: m.amountUsd, token: m.token,
           authId: m.visa.authId, status: "HELD", at: m.at, card: m.card }));
       } catch {
         handoff = false; // private mode or storage blocked: the pickup page could not find this hold
@@ -204,10 +226,10 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
               </div>
             )}
           </div>
-          {held && !res.results.some((r) => r.listing.id === held.id) && (
+          {shownHeld && !res.results.some((r) => r.listing.id === shownHeld.id) && (
             <div role="status" className="rounded-xl border-2 border-ink bg-amber p-3 font-bold">
-              {held.text}
-              {held.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
+              {shownHeld.text}
+              {shownHeld.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
             </div>
           )}
           {res.results.length === 0 && <p className="hand text-3xl">Nothing matched. Try fewer words or a higher budget.</p>}
@@ -218,7 +240,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
               const price = l.priceUsd ?? 0;
               const canBuy = r.screen.tone !== "red" && price >= 1 && price <= AGENT_MAX;
               // one open hold at a time: a second hold would hide the first while it is still authorized at Visa
-              const otherHold = !!held && held.id !== l.id;
+              const otherHold = !!shownHeld && shownHeld.id !== l.id;
               return (
                 <li key={l.id} id={`listing-${l.id}`} data-tone={r.screen.tone} data-proposed={proposed === l.id || undefined}
                   className={`rounded-[1.75rem] border-[3px] border-ink ${t.bg} p-4 grid grid-cols-[6.5rem_1fr] gap-4 scroll-mt-28 ${proposed === l.id ? "ring-[6px] ring-visa ring-offset-2" : ""}`}>
@@ -242,7 +264,7 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
                   )}
                   <p className="col-span-2 text-sm font-semibold">{r.screen.reason}</p>
                   <div className="col-span-2 flex flex-wrap items-center gap-3">
-                    {held?.id === l.id ? null : otherHold && canBuy ? (
+                    {shownHeld?.id === l.id ? null : otherHold && canBuy ? (
                       <span className="text-sm font-extrabold">One hold at a time: finish the pickup for your current hold first.</span>
                     ) : canBuy ? (
                       <button type="button" onClick={() => void buy(r)} disabled={!!buying}
@@ -256,10 +278,10 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
                     )}
                     {r.screen.tone === "red" && r.screen.kind === "BANNED_TYPE" && <SpeakVerdict kind="BANNED_TYPE" />}
                   </div>
-                  {held?.id === l.id && (
+                  {shownHeld?.id === l.id && (
                     <div role="status" className="col-span-2 rounded-xl border-2 border-ink p-3 font-bold bg-amber">
-                      {held.text}
-                      {held.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
+                      {shownHeld.text}
+                      {shownHeld.handoff && <Link href="/pickup" className="ml-2 underline">Meet the seller: open the pickup scan →</Link>}
                     </div>
                   )}
                   {failed?.id === l.id && (
