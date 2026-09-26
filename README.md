@@ -72,7 +72,9 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
 3. **Check.** `src/server/recalls/match.ts`: O/0 and I/1 folding, batch-restricted recalls, and the legal
    rules (inclined sleepers and padded crib bumpers banned, mesh liners excepted, drop-side cribs not
    resellable, in-bed sleepers and car seats need a check). The vocabulary never says "safe".
-4. **Capture or reverse.** A captured sale gets an item passport: the SHA-256 of the pickup record written to
+4. **Both sides see it.** Every hold and settlement is recorded in MongoDB Atlas; the seller scans a QR on
+   the buyer's screen and watches the same deal live (`/deal/<id>`), and `/board` shows every deal.
+5. **Capture or reverse.** A captured sale gets an item passport: the SHA-256 of the pickup record written to
    Solana devnet in a Memo transaction, which `/passport/<signature>` reads back and recomputes (live once the
    devnet wallet is funded).
 
