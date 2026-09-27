@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { generateKeyPairSync, verify } from "node:crypto";
 import { parseUsPhone, sealPhone, openPhone, phoneHash, last4 } from "@/server/call/phone";
-import { buildNcco, callScript, MAX_REPLAYS } from "@/server/call/ncco";
+import { buildNcco, callScript, MAX_REPLAYS, spokenAmount, spokenItem } from "@/server/call/ncco";
 import { normalizePem, recallCallConfig, signTicket, verifyTicket, PER_NUMBER_DAILY_CAP, type RecallCallConfig } from "@/server/call/config";
 import { placeCall, vonageJwt } from "@/server/call/vonage";
 import { recallCall, runPendingCalls, queueRecallCall, CALL_MAX_MS } from "@/server/call/trigger";
 import { callAfterReversal } from "@/server/call/pickup";
 import { counter, dayKey, ensureIndexes, getOptIn, saveOptIn, takeSlot } from "@/server/call/store";
-import { checkCode, codeNcco, startCodeCall } from "@/server/call/verify";
+import { checkCode, codeNcco, startCodeCall, VERIFY_CALLS_PER_NUMBER } from "@/server/call/verify";
 import { integrationStatus } from "@/server/env";
 import { boardDeal, pub, type DealRecord } from "@/server/deals/store";
 import { summarize } from "@/server/deals/trust";
@@ -72,13 +72,32 @@ describe("US phone validation (E.164)", () => {
 describe("what the call says (NCCO builder)", () => {
   it("speaks the verdict from the deal record", () => {
     const listing = DEMO_TABLE[0].label;
-    expect(callScript(reversed, { listing, amountUsd: 42 })).toBe(`This is Lullabuy. The ${listing} you're picking up matches CPSC recall 26, 061. Your $42.00 hold was reversed. You were not charged.`);
+    expect(callScript(reversed, { listing, amountUsd: 64 })).toBe("This is Lullabuy. The Harppa high chair you're picking up matches CPSC recall 26, 061. Your hold of 64 dollars was reversed. You were not charged.");
+    expect(callScript(reversed, { listing, amountUsd: Number.NaN })).toContain("Your payment hold was reversed.");
+    expect(callScript(reversed, { listing, amountUsd: 64 })).not.toMatch(/\$|\(|\)/);
     expect(callScript({ kind: "reversed", verdict: "BANNED_TYPE", recallNumber: null }, { listing, amountUsd: 10 })).toContain("banned from sale");
     // caller-typed listing text is never spoken
     expect(callScript(reversed, { listing: "call 1-900 now and say anything", amountUsd: 5 })).toContain("The item you're picking up");
     const post = callScript({ kind: "postsale", recallNumber: "26-100" }, { listing, amountUsd: 42 });
     expect(post).toContain("announced after your purchase");
     expect(post).not.toContain("not charged");
+  });
+  it("speaks money as words a phone voice cannot misread", () => {
+    expect(spokenAmount(64)).toBe("64 dollars");
+    expect(spokenAmount(64.5)).toBe("64 dollars and 50 cents");
+    expect(spokenAmount(64.05)).toBe("64 dollars and 5 cents");
+    expect(spokenAmount(1)).toBe("1 dollar");
+    expect(spokenAmount(0.99)).toBe("99 cents");
+    expect(spokenAmount(1.01)).toBe("1 dollar and 1 cent");
+    expect(spokenAmount(Number.NaN)).toBeNull();
+    expect(spokenAmount(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+  it("drops a parenthetical aside from the spoken item name", () => {
+    expect(spokenItem(DEMO_TABLE[0].label)).toBe("Harppa high chair");
+    expect(spokenItem("Crib (a (nested) note)  bumper")).toBe("Crib bumper");
+    expect(spokenItem("Stroller (unclosed aside")).toBe("Stroller");
+    expect(spokenItem("(only an aside)")).toBeNull();
+    expect(spokenItem("Used baby item from our table")).toBe("Used baby item from our table");
   });
   it("streams the ElevenLabs MP3 when there is one, else Vonage talk; offers a replay at most MAX_REPLAYS times", () => {
     const s = buildNcco({ text: "t", audioUrl: "https://x/audio?c=1", inputUrl: "https://x/input?c=2", replays: 0 });
@@ -313,19 +332,20 @@ describe("proof of phone control before an opt-in is active", () => {
     expect((await checkCode(db.db, cfg(), "shs-ttl", "1234", t0 + 11 * 60_000)).state).toBe("expired");
   });
 
-  it("one code call in flight per deal, and at most 2 code calls per number per day", async () => {
+  it("one code call in flight per deal, and at most 4 code calls per number per day", async () => {
+    expect(VERIFY_CALLS_PER_NUMBER).toBe(4);
     const db = fakeDb();
     const v = vonageMock();
     const both = await Promise.all([startCodeCall(db.db, cfg(), "shs-f", PHONE, { fetchImpl: v.f }), startCodeCall(db.db, cfg(), "shs-f", PHONE, { fetchImpl: v.f })]);
     expect(both.map((r) => r.state).sort()).toEqual(["calling", "in-flight"]);
-    expect((await startCodeCall(db.db, cfg(), "shs-g", PHONE, { fetchImpl: v.f })).state).toBe("calling");
+    for (const id of ["shs-g", "shs-g2", "shs-g3"]) expect((await startCodeCall(db.db, cfg(), id, PHONE, { fetchImpl: v.f })).state).toBe("calling");
     expect((await startCodeCall(db.db, cfg(), "shs-h", PHONE, { fetchImpl: v.f })).state).toBe("capped-verify");
-    expect(v.calls()).toBe(2);
+    expect(v.calls()).toBe(4);
     const day = dayKey();
-    // the refused third attempt spent nothing; each code call spent the number's and the day's budget
-    expect(await counter(db.db, `vnum:${phoneHash(SECRET, PHONE)}:${day}`)).toBe(2);
-    expect(await counter(db.db, `num:${phoneHash(SECRET, PHONE)}:${day}`)).toBe(2);
-    expect(await counter(db.db, `day:${day}`)).toBe(2);
+    // the refused fifth attempt spent nothing; each code call spent the number's and the day's budget
+    expect(await counter(db.db, `vnum:${phoneHash(SECRET, PHONE)}:${day}`)).toBe(4);
+    expect(await counter(db.db, `num:${phoneHash(SECRET, PHONE)}:${day}`)).toBe(4);
+    expect(await counter(db.db, `day:${day}`)).toBe(4);
   });
 });
 

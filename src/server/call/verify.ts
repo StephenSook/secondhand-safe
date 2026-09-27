@@ -8,10 +8,10 @@ import { placeCall } from "./vonage";
 /**
  * Proof of phone control before an opt-in becomes active (a deal token proves the deal, not the phone). The opt-in
  * places a short call that speaks a 4-digit code twice; only the person holding that phone can type it back.
- * The code call spends the same per-number and daily caps as a recall call, plus its own cap (2 code calls per number
+ * The code call spends the same per-number and daily caps as a recall call, plus its own cap (4 code calls per number
  * per day), and at most one code is in flight per deal, so the check itself cannot be used to ring someone repeatedly.
  */
-export const VERIFY_CALLS_PER_NUMBER = 2;
+export const VERIFY_CALLS_PER_NUMBER = 4;
 
 const codeHash = (secret: string, dealId: string, numberHash: string, code: string) =>
   createHmac("sha256", `recall-call-code:${secret}`).update(`${dealId}|${numberHash}|${code}`).digest("hex");

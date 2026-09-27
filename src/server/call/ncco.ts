@@ -15,10 +15,35 @@ const RECALL_NO = /^[A-Za-z0-9-]{2,20}$/;
 /** "26-061" is read as "26, 061" so a phone voice does not say "minus" or a date. */
 const spokenRecall = (n: string) => n.replace(/-/g, ", ");
 
+/**
+ * Money for a phone voice: "$64.00" is read by the ElevenLabs voice as "sixty-four hundred", so the call says
+ * "64 dollars" (or "64 dollars and 50 cents"). Null when the amount is not a usable number. Speech only: on-screen
+ * money keeps its own formatting.
+ */
+export function spokenAmount(usd: number): string | null {
+  if (!Number.isFinite(usd) || usd < 0) return null;
+  const total = Math.round(usd * 100);
+  const dollars = Math.floor(total / 100);
+  const cents = total % 100;
+  const d = `${dollars} ${dollars === 1 ? "dollar" : "dollars"}`;
+  const c = `${cents} ${cents === 1 ? "cent" : "cents"}`;
+  if (cents === 0) return d;
+  return dollars === 0 ? c : `${d} and ${c}`;
+}
+
+/** The listing title without any "( ... )" aside, whitespace collapsed; null when nothing is left to say. */
+export function spokenItem(title: string): string | null {
+  let t = title;
+  for (let prev = ""; prev !== t;) { prev = t; t = t.replace(/\([^()]*\)/g, " "); }
+  // an unclosed "(" drops everything after it; a stray ")" is just removed
+  t = t.replace(/\(.*$/, " ").replace(/\)/g, " ").replace(/\s+/g, " ").trim();
+  return t || null;
+}
+
 export function callScript(r: CallReason, deal: { listing: string; amountUsd: number }): string {
   const shown = publicListing(deal.listing);
-  const item = shown === "A listing" ? "item" : shown;
-  const amount = Number.isFinite(deal.amountUsd) ? `$${deal.amountUsd.toFixed(2)}` : "payment";
+  const item = (shown === "A listing" ? null : spokenItem(shown)) ?? "item";
+  const money = spokenAmount(deal.amountUsd);
   if (r.kind === "postsale") {
     const n = RECALL_NO.test(r.recallNumber) ? `CPSC recall ${spokenRecall(r.recallNumber)}` : "a CPSC recall";
     return `This is Lullabuy. The ${item} you bought now matches ${n}, announced after your purchase. Stop using it, and read the recall notice for the remedy.`;
@@ -26,7 +51,7 @@ export function callScript(r: CallReason, deal: { listing: string; amountUsd: nu
   const why = r.verdict === "RECALL_MATCH" && r.recallNumber && RECALL_NO.test(r.recallNumber)
     ? `matches CPSC recall ${spokenRecall(r.recallNumber)}`
     : r.verdict === "RECALL_MATCH" ? "matches a CPSC recall" : "is a type of baby product that is banned from sale";
-  return `This is Lullabuy. The ${item} you're picking up ${why}. Your ${amount} hold was reversed. You were not charged.`;
+  return `This is Lullabuy. The ${item} you're picking up ${why}. ${money ? `Your hold of ${money} was reversed.` : "Your payment hold was reversed."} You were not charged.`;
 }
 
 export const MAX_REPLAYS = 2;
