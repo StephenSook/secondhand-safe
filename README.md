@@ -86,6 +86,10 @@ gap is peer-to-peer, at the handoff, which is where this check runs.
 (camera photo, Gemini reads it, the recall check runs, the phone speaks the verdict) and Deal board. To try it
 on a phone: install Expo Go, then `cd mobile && npm install && npx expo start` and scan the QR code.
 
+Install links: Android APK at [lullabuy.tech/get/android](https://lullabuy.tech/get/android) (redirects to the
+`mobile-v1.0.0` release asset). iPhone: [lullabuy.tech/get/ios](https://lullabuy.tech/get/ios), which opens the public
+TestFlight link once Apple's beta review approves it and until then points to the web app and the APK.
+
 ## Repo map
 
 - `src/` Next.js 16 app: landing, `/shop`, `/pickup`, `/passport`, `/judge`, public API (`/api/check`, `/api/stats`, `/api/health`, `/api/label`, `/api/mcp`, `/api/shop`). Gemini in production uses no stored key: Vercel's OIDC token is exchanged through Google Workload Identity Federation (`src/server/ml/gcpToken.ts`).

@@ -11,7 +11,8 @@ export interface RecallCallConfig {
   applicationId: string; privateKey: string; from: string; secret: string; baseUrl: string; dailyCap: number; perNumberCap: number;
 }
 
-export const PER_NUMBER_DAILY_CAP = 3;
+/** Recall and code calls one number can receive per UTC day, across every deal (the daily cap still bounds the whole deployment). */
+export const PER_NUMBER_DAILY_CAP = 6;
 
 /** A PEM pasted into an env var often arrives with literal "\n" escapes, or base64-encoded; accept both. */
 export function normalizePem(raw: string): string {
