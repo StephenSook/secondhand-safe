@@ -5,11 +5,16 @@ import { verifyDealToken } from "@/server/deals/token";
 import { decide, settle } from "@/server/deals/settle";
 import { mongoClaims, settleOnce } from "@/server/deals/claim";
 import type { ProductClass } from "@/core/verdict";
-import { anchor, passportMemo, recordHash } from "@/server/solana/memo";
+import { anchor, passportMemo, passportRecord, recordHash } from "@/server/solana/memo";
 import { getDeal, recordSettlementStatus } from "@/server/deals/store";
 import { payoutAfterCapture } from "@/server/deals/payout";
+import { mintPassport } from "@/server/solana/mints";
 import { waitUntil } from "@vercel/functions";
 import { callAfterReversal } from "@/server/call/pickup";
+
+// the Core asset mint runs after the response (waitUntil): balance 8 s + claim + cap + a 40 s send + writes (up to 12 s).
+// If the function is stopped anyway, the claim stays pending with its address and the watch cron reconciles it.
+export const maxDuration = 120;
 
 const CLASSES: ProductClass[] = ["inclined_or_inbed_sleeper", "crib_bumper", "drop_side_crib", "other"];
 const FINAL = new Set(["CAPTURED", "REVERSED", "RELEASED", "LAPSED", "REFUSED"]);
@@ -59,14 +64,19 @@ export async function POST(request: Request) {
     let passport: { signature: string; path: string } | { error: string } | undefined;
     const sol = process.env.SOLANA_SECRET_KEY_B58?.trim();
     if (out.status === "CAPTURED" && sol) {
-      const record = JSON.stringify({
-        v: 1, dealId: deal.dealId, amountUsd: deal.amountUsd, verdict: verdict.kind, reason: verdict.reason, indexAsOf: verdict.asOf,
-        label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null },
-        visaCapture: out.visa?.id ?? null, at: new Date().toISOString(),
-      });
+      // public (the link travels on public deal views): no Visa id; the response below still gives the buyer the capture id
+      const record = passportRecord({ dealId: deal.dealId, amountUsd: deal.amountUsd, verdict: verdict.kind, reason: verdict.reason, indexAsOf: verdict.asOf,
+        label: { model: str(b.model) ?? null, batch: str(b.batch) ?? null, date: str(b.date) ?? null, upc: str(b.upc) ?? null }, at: new Date().toISOString() });
       try {
-        const signature = await anchor(sol, passportMemo(deal.dealId, recordHash(record)));
+        const sha = recordHash(record);
+        const signature = await anchor(sol, passportMemo(deal.dealId, sha));
         passport = { signature, path: `/passport/${signature}?r=${Buffer.from(record).toString("base64url")}` };
+        // the on-chain asset: after the response, never on the Visa or Memo path; a failure only means no asset
+        const base = process.env.PUBLIC_BASE_URL?.trim() || new URL(request.url).origin;
+        // one claim per deal in Atlas, a daily cap that fails closed, and a stored address the cron can reconcile
+        waitUntil(mintPassport({ verdict: verdict.kind, recordSha256: sha, indexAsOf: verdict.asOf, dealId: deal.dealId, status: "CAPTURED" }, base)
+          .then((m) => { if (m.state !== "minted") console.warn(`[core-passport] ${deal.dealId}: ${m.state}${m.reason ? `: ${m.reason}` : ""}`); })
+          .catch((e) => console.warn("[core-passport] mint task failed:", (e as Error).message)));
       } catch (e) {
         passport = { error: `Passport not written: ${(e as Error).message}` };
       }

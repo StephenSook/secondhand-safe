@@ -110,5 +110,15 @@ Known limits of the settlement path, all failing toward "no money moves":
 Sandbox only: no real money moves. The deals on `/board` and `/trust` are our own demo purchases and our
 automated end-to-end tests, which run against this live site.
 
+Known limits of the Metaplex Core passport (an add-on to the Memo passport, which every captured sale
+gets): each sale gets one mint attempt, capped per day (`PASSPORT_DAILY_CAP`, `0` switches it off). A send
+that times out is settled by looking up its one stored address (when that sale's passport page is viewed, at
+most every 30 seconds, and by the daily cron); if a server dies between storing that
+address and sending, or the asset never lands, the sale ends as `not_minted` with no Core asset and keeps
+its verified Memo passport. The wallet balance check before a mint is best effort, so two mints at once can
+take the devnet wallet slightly below its 0.02 SOL floor. Passport links written before 2026-09-26 carry
+the Visa sandbox capture id in their record; it cannot be removed without breaking that memo's hash, and
+new records omit it.
+
 Team: Stephen Sookra (frontend, AI/ML, mobile) and Tylin (backend). HackGT 13, Sep 25-27 2026. Plan:
 [PLAN.md](PLAN.md).

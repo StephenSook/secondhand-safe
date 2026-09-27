@@ -13,6 +13,7 @@ type Deal = {
   createdAt: string; updatedAt: string; events: { at: string; status: string; note: string }[];
   postSaleRecall?: { recallNumber: string; title: string; url: string; at: string } | null;
   verdict?: { kind: string; reason: string; recall?: string | null }; passportPath?: string | null;
+  passportAsset?: string | null;
   payout?: { status: string; at: string; amountUsd: number; recipient: string | null; transactionId: string | null; actionCode: string | null } | null;
 };
 const PAYOUT_WORD: Record<string, string> = { SENT: "sent", UNCERTAIN: "not yet confirmed", FAILED: "failed" };
@@ -55,6 +56,10 @@ export function DealLive({ dealId }: { dealId: string }) {
         <p className="font-semibold opacity-85">{d.listing}</p>
         {d.verdict && <p className="mt-3 font-bold">{d.verdict.reason}</p>}
         {d.passportPath && <a href={d.passportPath} className="mt-2 inline-block underline font-bold">Item passport</a>}
+        {d.passportAsset && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(d.passportAsset) && (
+          <a href={`https://explorer.solana.com/address/${d.passportAsset}?cluster=devnet`} target="_blank" rel="noreferrer"
+            className="mt-2 ml-4 inline-block underline font-bold">On-chain asset (Solana devnet)</a>
+        )}
         {d.payout && (
           <p data-testid="payout" className="mt-3 rounded-xl border-2 border-ink bg-paper text-ink p-3 font-bold">
             Seller payout with Visa Direct {PAYOUT_WORD[d.payout.status] ?? d.payout.status}: ${d.payout.amountUsd.toFixed(2)}
