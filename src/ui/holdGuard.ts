@@ -40,6 +40,17 @@ export function openHold(raw: string = readBoth()): Held | null {
   return null;
 }
 
+/**
+ * What the page SHOWS for the open hold (blocking is `openHold`, unchanged). The pending marker is written before
+ * the request goes out, so while THIS tab's request is still in flight the marker is expected and is not yet a
+ * warning: the caller shows its own busy text instead. Once nothing is in flight (a reload found the marker, or the
+ * answer failed, timed out or was ambiguous and the marker was kept) the "MAY exist" warning shows. A confirmed
+ * hold is always shown.
+ */
+export function shownHold(h: Held | null, requestInFlight: boolean): Held | null {
+  return h?.pending && requestInFlight ? null : h;
+}
+
 /** Writes the pending marker; false when the browser refuses storage (the caller must then not call checkout). */
 export function markPending(p: { listingId: string; listing: string; amountUsd: number }): boolean {
   try {
