@@ -1,7 +1,7 @@
 import type { Db } from "mongodb";
 import { getDb } from "@/server/db/mongo";
 import { speakText } from "@/server/voice/elevenlabs";
-import { recallCallConfig, signTicket, type RecallCallConfig } from "./config";
+import { perNumberCapFor, recallCallConfig, signTicket, type RecallCallConfig } from "./config";
 import { buildNcco, callScript, reasonKey, type CallReason } from "./ncco";
 import { openPhone } from "./phone";
 import { claimCall, dayKey, enqueueCall, ensureIndexes, getOptIn, pendingCalls, reserveSlots, updateCall } from "./store";
@@ -52,7 +52,7 @@ export async function recallCall(dealId: string, reason: CallReason, deps: CallD
     const id = `${dealId}:${key}`;
     if (!(await claimCall(db, { dealId, reason: key, recallNumber: reason.recallNumber, last4: opt.last4, hash: opt.hash }, now))) return { state: "already" };
     const day = dayKey(now);
-    const r0 = await reserveSlots(db, [{ id: `num:${opt.hash}:${day}`, cap: cfg.perNumberCap }, { id: `day:${day}`, cap: cfg.dailyCap }], now);
+    const r0 = await reserveSlots(db, [{ id: `num:${opt.hash}:${day}`, cap: perNumberCapFor(cfg, opt.hash) }, { id: `day:${day}`, cap: cfg.dailyCap }], now);
     if (!r0.ok) {
       const numberCapped = r0.refused === 0;
       await updateCall(db, id, { status: "capped", note: numberCapped ? "this number already got its calls today" : "daily call cap reached" });

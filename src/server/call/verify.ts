@@ -1,6 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import type { Db } from "mongodb";
-import type { RecallCallConfig } from "./config";
+import { isTeamNumber, perNumberCapFor, TEAM_VERIFY_CALLS_PER_NUMBER, type RecallCallConfig } from "./config";
 import { last4, phoneHash, sealPhone } from "./phone";
 import { dayKey, dropVerification, reserveSlots, saveOptIn, startVerification, takeAttempt } from "./store";
 import { placeCall } from "./vonage";
@@ -35,7 +35,8 @@ export async function startCodeCall(db: Db, cfg: RecallCallConfig, dealId: strin
   if (started === "error") return { state: "no-db" };
   const day = dayKey(now);
   const r = await reserveSlots(db, [
-    { id: `vnum:${hash}:${day}`, cap: VERIFY_CALLS_PER_NUMBER }, { id: `num:${hash}:${day}`, cap: cfg.perNumberCap }, { id: `day:${day}`, cap: cfg.dailyCap },
+    { id: `vnum:${hash}:${day}`, cap: isTeamNumber(cfg, hash) ? TEAM_VERIFY_CALLS_PER_NUMBER : VERIFY_CALLS_PER_NUMBER },
+    { id: `num:${hash}:${day}`, cap: perNumberCapFor(cfg, hash) }, { id: `day:${day}`, cap: cfg.dailyCap },
   ], now);
   if (!r.ok) {
     await dropVerification(db, dealId);

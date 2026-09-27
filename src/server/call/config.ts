@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { INTEGRATIONS } from "@/server/env";
-import { parseUsPhone } from "./phone";
+import { parseUsPhone, phoneHash } from "./phone";
 
 /**
  * The recall call is live only when every variable it needs is present (wired-or-cut): the Vonage application id and
@@ -9,10 +9,18 @@ import { parseUsPhone } from "./phone";
  */
 export interface RecallCallConfig {
   applicationId: string; privateKey: string; from: string; secret: string; baseUrl: string; dailyCap: number; perNumberCap: number;
+  /** Phone hashes of the team's own demo phones (from RECALL_CALL_TEAM_NUMBERS); they get the team caps below. */
+  teamHashes?: ReadonlySet<string>;
 }
 
 /** Recall and code calls one number can receive per UTC day, across every deal (the daily cap still bounds the whole deployment). */
 export const PER_NUMBER_DAILY_CAP = 6;
+/** The team's own demo phones ring once per judge at the expo, so they get more room; the daily cap still bounds everything. */
+export const TEAM_NUMBER_DAILY_CAP = 30;
+export const TEAM_VERIFY_CALLS_PER_NUMBER = 20;
+
+export const isTeamNumber = (cfg: RecallCallConfig, hash: string) => cfg.teamHashes?.has(hash) ?? false;
+export const perNumberCapFor = (cfg: RecallCallConfig, hash: string) => (isTeamNumber(cfg, hash) ? TEAM_NUMBER_DAILY_CAP : cfg.perNumberCap);
 
 /** A PEM pasted into an env var often arrives with literal "\n" escapes, or base64-encoded; accept both. */
 export function normalizePem(raw: string): string {
@@ -40,10 +48,14 @@ export function recallCallConfig(src: Record<string, string | undefined> = proce
     return null;
   }
   const cap = Number(v("RECALL_CALL_DAILY_CAP") || 60);
+  const secret = v("RECALL_CALL_SECRET");
+  // at most 4 team numbers; anything that does not parse as a US number is ignored
+  const team = v("RECALL_CALL_TEAM_NUMBERS").split(",").map((s) => parseUsPhone(s)).filter((n): n is string => !!n).slice(0, 4);
   return {
     applicationId: v("RECALL_CALL_VONAGE_APPLICATION_ID"), privateKey: normalizePem(v("RECALL_CALL_VONAGE_PRIVATE_KEY")),
-    from, secret: v("RECALL_CALL_SECRET"), baseUrl,
+    from, secret, baseUrl,
     dailyCap: Number.isInteger(cap) && cap >= 0 ? Math.min(cap, 500) : 60, perNumberCap: PER_NUMBER_DAILY_CAP,
+    teamHashes: new Set(team.map((n) => phoneHash(secret, n))),
   };
 }
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { generateKeyPairSync, verify } from "node:crypto";
 import { parseUsPhone, sealPhone, openPhone, phoneHash, last4 } from "@/server/call/phone";
 import { buildNcco, callScript, MAX_REPLAYS, spokenAmount, spokenItem } from "@/server/call/ncco";
-import { normalizePem, recallCallConfig, signTicket, verifyTicket, PER_NUMBER_DAILY_CAP, type RecallCallConfig } from "@/server/call/config";
+import { isTeamNumber, normalizePem, perNumberCapFor, recallCallConfig, signTicket, verifyTicket, PER_NUMBER_DAILY_CAP, TEAM_NUMBER_DAILY_CAP, type RecallCallConfig } from "@/server/call/config";
 import { placeCall, vonageJwt } from "@/server/call/vonage";
 import { recallCall, runPendingCalls, queueRecallCall, CALL_MAX_MS } from "@/server/call/trigger";
 import { callAfterReversal } from "@/server/call/pickup";
@@ -289,6 +289,15 @@ describe("config and health (wired-or-cut)", () => {
     expect(recallCallConfig({ ...full, PUBLIC_BASE_URL: "http://lullabuy.example" })).toBeNull();
     expect(recallCallConfig({ ...full, RECALL_CALL_FROM_NUMBER: "+44 20 7946 0000" })).toBeNull();
     expect(normalizePem(Buffer.from(privateKey).toString("base64"))).toBe(privateKey.trim());
+  });
+  it("team numbers get the team caps, everyone else keeps the normal ones", () => {
+    const c = recallCallConfig({ ...full, RECALL_CALL_TEAM_NUMBERS: "404-555-0101, not a number, +1 (678) 555-0199" })!;
+    const team = phoneHash("s", "+14045550101"), team2 = phoneHash("s", "+16785550199"), other = phoneHash("s", "+14045550102");
+    expect(perNumberCapFor(c, team)).toBe(TEAM_NUMBER_DAILY_CAP);
+    expect(perNumberCapFor(c, team2)).toBe(TEAM_NUMBER_DAILY_CAP);
+    expect(perNumberCapFor(c, other)).toBe(PER_NUMBER_DAILY_CAP);
+    expect(isTeamNumber(recallCallConfig(full)!, team)).toBe(false);
+    expect(c.dailyCap).toBe(60); // the whole-deployment cap still bounds team numbers
   });
   it("callback tickets are purpose-bound and expire", () => {
     const t = signTicket(SECRET, { k: "d:reversed", p: "audio" }, 1000, 0);
