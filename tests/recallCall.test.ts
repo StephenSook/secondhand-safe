@@ -281,9 +281,11 @@ describe("config and health (wired-or-cut)", () => {
     expect(c.privateKey).toBe(privateKey.trim()); // the escaped \n form is turned back into real line breaks
     expect(c.from).toBe("+14045552300");
     expect(c.baseUrl).toBe("https://lullabuy.example");
-    expect(c.dailyCap).toBe(20);
+    expect(c.dailyCap).toBe(60);
     expect(c.perNumberCap).toBe(PER_NUMBER_DAILY_CAP);
     expect(recallCallConfig({ ...full, RECALL_CALL_DAILY_CAP: "3" })!.dailyCap).toBe(3);
+    expect(recallCallConfig({ ...full, RECALL_CALL_DAILY_CAP: "9999" })!.dailyCap).toBe(500);
+    expect(recallCallConfig({ ...full, RECALL_CALL_DAILY_CAP: "abc" })!.dailyCap).toBe(60);
     expect(recallCallConfig({ ...full, PUBLIC_BASE_URL: "http://lullabuy.example" })).toBeNull();
     expect(recallCallConfig({ ...full, RECALL_CALL_FROM_NUMBER: "+44 20 7946 0000" })).toBeNull();
     expect(normalizePem(Buffer.from(privateKey).toString("base64"))).toBe(privateKey.trim());

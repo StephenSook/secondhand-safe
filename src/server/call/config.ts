@@ -39,11 +39,11 @@ export function recallCallConfig(src: Record<string, string | undefined> = proce
   } catch {
     return null;
   }
-  const cap = Number(v("RECALL_CALL_DAILY_CAP") || 20);
+  const cap = Number(v("RECALL_CALL_DAILY_CAP") || 60);
   return {
     applicationId: v("RECALL_CALL_VONAGE_APPLICATION_ID"), privateKey: normalizePem(v("RECALL_CALL_VONAGE_PRIVATE_KEY")),
     from, secret: v("RECALL_CALL_SECRET"), baseUrl,
-    dailyCap: Number.isInteger(cap) && cap >= 0 ? Math.min(cap, 500) : 20, perNumberCap: PER_NUMBER_DAILY_CAP,
+    dailyCap: Number.isInteger(cap) && cap >= 0 ? Math.min(cap, 500) : 60, perNumberCap: PER_NUMBER_DAILY_CAP,
   };
 }
 

@@ -33,7 +33,9 @@ jobs:
           s = get("/api/stats")
           assert s["recallIndex"]["recalls"] > 1000 and s["classifier"]["macroF1"] > s["classifier"]["zeroShotMacroF1"], s
           h = get("/api/health")
-          assert h["ok"] is True and all(h["integrations"].values()), h
+          # visaDirect is intentionally off (Visa Direct not enabled on the project), so require only the live set
+          live = ["visa", "mongo", "gemini", "elevenlabs", "tap", "solana", "recallCall"]
+          assert h["ok"] is True and all(h["integrations"].get(k) is True for k in live), h
           d = get("/api/deals")
           assert isinstance(d["recent"], list), d
           req = urllib.request.Request(base + "/api/mcp",
