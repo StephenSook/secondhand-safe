@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { generateKeyPairSync, verify } from "node:crypto";
 import { parseUsPhone, sealPhone, openPhone, phoneHash, last4 } from "@/server/call/phone";
 import { buildNcco, callScript, MAX_REPLAYS } from "@/server/call/ncco";
-import { normalizePem, recallCallConfig, signTicket, verifyTicket, type RecallCallConfig } from "@/server/call/config";
+import { normalizePem, recallCallConfig, signTicket, verifyTicket, PER_NUMBER_DAILY_CAP, type RecallCallConfig } from "@/server/call/config";
 import { placeCall, vonageJwt } from "@/server/call/vonage";
 import { recallCall, runPendingCalls, queueRecallCall, CALL_MAX_MS } from "@/server/call/trigger";
 import { callAfterReversal } from "@/server/call/pickup";
@@ -19,7 +19,7 @@ const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 20
 const SECRET = "test-recall-secret-not-real";
 const cfg = (over: Partial<RecallCallConfig> = {}): RecallCallConfig => ({
   applicationId: "00000000-0000-4000-8000-000000000000", privateKey, from: "+14045552300", secret: SECRET,
-  baseUrl: "https://lullabuy.example", dailyCap: 20, perNumberCap: 3, ...over,
+  baseUrl: "https://lullabuy.example", dailyCap: 20, perNumberCap: PER_NUMBER_DAILY_CAP, ...over,
 });
 const PHONE = "+14045552368";
 
@@ -150,14 +150,20 @@ describe("recall call gates", () => {
     expect(v.calls()).toBe(2);
   });
 
-  it("one number gets at most 3 calls a day across deals", async () => {
+  it("one number gets at most PER_NUMBER_DAILY_CAP (6) calls a day across deals, and the next ones are refused", async () => {
+    expect(PER_NUMBER_DAILY_CAP).toBe(6);
+    const n = PER_NUMBER_DAILY_CAP + 2;
     const db = fakeDb();
-    for (let i = 0; i < 5; i++) await seed(db, `shs-n${i}`);
+    for (let i = 0; i < n; i++) await seed(db, `shs-n${i}`);
     const v = vonageMock();
-    const out = await Promise.all([0, 1, 2, 3, 4].map((i) => recallCall(`shs-n${i}`, reversed, deps(db, v.f))));
-    expect(out.filter((o) => o.state === "placed")).toHaveLength(3);
+    const out = await Promise.all(Array.from({ length: n }, (_, i) => recallCall(`shs-n${i}`, reversed, deps(db, v.f))));
+    expect(out.filter((o) => o.state === "placed")).toHaveLength(PER_NUMBER_DAILY_CAP);
     expect(out.filter((o) => o.state === "capped-number")).toHaveLength(2);
-    expect(v.calls()).toBe(3);
+    expect(v.calls()).toBe(PER_NUMBER_DAILY_CAP);
+    // at the cap, one more attempt on a fresh deal is still refused and places no call
+    await seed(db, "shs-n-late");
+    expect((await recallCall("shs-n-late", reversed, deps(db, v.f))).state).toBe("capped-number");
+    expect(v.calls()).toBe(PER_NUMBER_DAILY_CAP);
   });
 
   it("never calls a number that did not opt in on the same deal, and does nothing without Atlas or config", async () => {
@@ -257,6 +263,7 @@ describe("config and health (wired-or-cut)", () => {
     expect(c.from).toBe("+14045552300");
     expect(c.baseUrl).toBe("https://lullabuy.example");
     expect(c.dailyCap).toBe(20);
+    expect(c.perNumberCap).toBe(PER_NUMBER_DAILY_CAP);
     expect(recallCallConfig({ ...full, RECALL_CALL_DAILY_CAP: "3" })!.dailyCap).toBe(3);
     expect(recallCallConfig({ ...full, PUBLIC_BASE_URL: "http://lullabuy.example" })).toBeNull();
     expect(recallCallConfig({ ...full, RECALL_CALL_FROM_NUMBER: "+44 20 7946 0000" })).toBeNull();
@@ -324,15 +331,16 @@ describe("proof of phone control before an opt-in is active", () => {
 
 describe("cap order: a capped number never spends the shared daily budget", () => {
   it("per-number refusals leave the global count unchanged", async () => {
+    // pins its own per-number cap (3) so the order is tested independently of PER_NUMBER_DAILY_CAP
     const db = fakeDb();
     for (let i = 0; i < 8; i++) await seed(db, `shs-c${i}`);
     const v = vonageMock();
-    for (let i = 0; i < 8; i++) await recallCall(`shs-c${i}`, reversed, { db: db.db, cfg: cfg({ dailyCap: 5 }), fetchImpl: v.f, elevenKey: null });
+    for (let i = 0; i < 8; i++) await recallCall(`shs-c${i}`, reversed, { db: db.db, cfg: cfg({ dailyCap: 5, perNumberCap: 3 }), fetchImpl: v.f, elevenKey: null });
     expect(v.calls()).toBe(3);
     expect(await counter(db.db, `day:${dayKey()}`)).toBe(3);
     // another number still gets its call: the 5 refused attempts did not use up the day
     await seed(db, "shs-other-number", "+14045552399");
-    expect((await recallCall("shs-other-number", reversed, { db: db.db, cfg: cfg({ dailyCap: 5 }), fetchImpl: v.f, elevenKey: null })).state).toBe("placed");
+    expect((await recallCall("shs-other-number", reversed, { db: db.db, cfg: cfg({ dailyCap: 5, perNumberCap: 3 }), fetchImpl: v.f, elevenKey: null })).state).toBe("placed");
   });
   it("a daily refusal gives the number's slot back", async () => {
     const db = fakeDb(); await seed(db, "shs-dd");
