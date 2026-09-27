@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { STORAGE_BLOCKED, stale, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth } from "./holdGuard";
+import { STORAGE_BLOCKED, stale, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth, shownHold } from "./holdGuard";
 import { CardFields, type CardState } from "./CardFields";
 import { DEMO_TABLE } from "@/core/demoTable";
 import type { Verdict } from "@/core/verdict";
@@ -122,17 +122,21 @@ export function PickupScanner() {
   // one open hold at a time across /shop and /pickup (src/ui/holdGuard.ts)
   const [, bumpGuard] = useState(0);
   const guardSnap = useSyncExternalStore(noSubscribe, readBoth, () => "\n");
-  const pendingHold = (() => { const h = openHold(guardSnap); return h?.pending ? h : null; })();
+  // true only between this tab writing the pending marker and its hold request settling (the marker still blocks)
+  const [holdInFlight, setHoldInFlight] = useState(false);
+  const pendingHold = (() => { const h = shownHold(openHold(guardSnap), holdInFlight); return h?.pending ? h : null; })();
   /** Refuses (with the reason) when a hold MAY already exist, then writes the pending marker. */
   function beginHold(): boolean {
     const existing = openHold();
     if (existing) { setDealErr(existing.text); bumpGuard((n) => n + 1); return false; }
     if (!markPending({ listingId: `table:${pick}`, listing: LISTINGS[pick].label, amountUsd: LISTINGS[pick].amountUsd })) { setDealErr(STORAGE_BLOCKED); return false; }
+    setHoldInFlight(true);
     bumpGuard((n) => n + 1);
     return true;
   }
   function endHold(noHold: boolean) {
     if (noHold) clearPending();
+    setHoldInFlight(false);
     bumpGuard((n) => n + 1);
   }
 

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { openHold, explicitlyNoHold } from "@/ui/holdGuard";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { openHold, explicitlyNoHold, markPending, clearPending, readBoth, shownHold } from "@/ui/holdGuard";
 
 // openHold(raw) reads "<shs-deal JSON>\n<shs-pending JSON>" (what the shop page reads from sessionStorage).
 const deal = (o: object) => JSON.stringify(o);
@@ -49,6 +49,51 @@ describe("the guard never blocks forever and never invents a purchase", () => {
     expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: old })}\n`)).toBeNull();
     expect(openHold(`\n${JSON.stringify({ listingId: "x", at: old })}`)).toBeNull();
     expect(openHold(`${JSON.stringify({ dealId: "shs-1", listingId: "x", status: "HELD", at: fresh })}\n`)).not.toBeNull();
+  });
+});
+
+describe("the MAY-exist warning is shown only when no request of this tab is in flight", () => {
+  // the page's sessionStorage, stubbed so the real markPending / clearPending / readBoth run
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const attempt = { listingId: "table:0", listing: "Bassinet", amountUsd: 64 };
+
+  it("(a) during this tab's in-flight request: the marker still blocks, but no warning is rendered", () => {
+    expect(markPending(attempt)).toBe(true);
+    const h = openHold(readBoth());
+    expect(h).toMatchObject({ id: "table:0", pending: true }); // blocking is unchanged: a second hold is refused
+    expect(shownHold(h, true)).toBeNull(); // nothing to warn about yet: the caller shows its busy text
+  });
+  it("(b) a marker found on load (after a reload, nothing in flight) renders the warning", () => {
+    expect(markPending(attempt)).toBe(true); // written by the tab before it reloaded mid-request
+    const shown = shownHold(openHold(readBoth()), false);
+    expect(shown).toMatchObject({ pending: true });
+    expect(shown?.text).toMatch(/did not confirm.*MAY exist/);
+  });
+  it("(c) a failed or ambiguous answer keeps the marker and renders the warning once the request settles", () => {
+    expect(markPending(attempt)).toBe(true);
+    if (explicitlyNoHold({ error: "HTTP 504" })) clearPending(); // what the pages do in finally: not explicit, so kept
+    const shown = shownHold(openHold(readBoth()), false);
+    expect(shown?.text).toMatch(/MAY exist/);
+  });
+  it("an explicit placed:false clears the marker, so nothing is shown or blocked", () => {
+    expect(markPending(attempt)).toBe(true);
+    if (explicitlyNoHold({ placed: false, error: "declined" })) clearPending();
+    expect(openHold(readBoth())).toBeNull();
+  });
+  it("a confirmed hold is always shown, in flight or not", () => {
+    const h = openHold(`${deal({ dealId: "shs-1", listingId: "ebay:1", listing: "Bassinet", amountUsd: 64, status: "HELD" })}\n`);
+    expect(shownHold(h, true)).toBe(h);
+    expect(shownHold(h, false)).toBe(h);
+    expect(shownHold(null, true)).toBeNull();
   });
 });
 

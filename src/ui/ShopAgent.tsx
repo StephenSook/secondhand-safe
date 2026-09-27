@@ -2,7 +2,7 @@
 
 import { useImperativeHandle, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import Link from "next/link";
-import { DEAL_KEY, STORAGE_BLOCKED, stale, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth, type Held } from "./holdGuard";
+import { DEAL_KEY, STORAGE_BLOCKED, stale, clearPending, explicitlyNoHold, markPending, noSubscribe, openHold, readBoth, shownHold, type Held } from "./holdGuard";
 import { SquashButton } from "./SquashButton";
 import { SpeakVerdict } from "./SpeakVerdict";
 
@@ -63,7 +63,9 @@ export function ShopAgent({ ref }: { ref?: Ref<ShopHandle> } = {}) {
   // re-evaluated on every render (not memoized), so a hold that ages past its 12 h life stops blocking
   const restored = openHold(stored);
   // the in-memory hold ages out exactly like the stored one
-  const shownHeld = (held && !(held.at && stale(held.at)) ? held : null) ?? restored;
+  // while this tab's own hold request is in flight its pending marker is expected, not a warning (the button says
+  // "Signing and holding…"); the marker still blocks every new hold through openHold() in buy()
+  const shownHeld = shownHold((held && !(held.at && stale(held.at)) ? held : null) ?? restored, !!buying);
 
   /** ElevenLabs reads the summary back. The server builds the sentence from the four counts only. */
   async function speakSummary(r: ShopResponse, lang: "en" | "es") {
